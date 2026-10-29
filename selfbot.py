@@ -23,6 +23,7 @@ from telethon.sessions import StringSession
 import assets
 import catalog
 import clockpic
+from concurrent.futures import ThreadPoolExecutor
 import db
 import utils
 
@@ -718,6 +719,9 @@ async def c_clock(c, e, uid, arg):
 # base photo = the user's own profile picture (stored once), a fresh JPEG with the clock is uploaded every N minutes
 # and the previous clock photo is deleted, so the original pictures stay untouched underneath.
 _cpic_lock: dict[int, asyncio.Lock] = {}
+_cpic_last: dict[int, object] = {}          # uid -> InputPhoto of the newest clock photo (fast delete, no listing)
+_POOL = ThreadPoolExecutor(max_workers=max(4, (os.cpu_count() or 2) * 2))
+CPIC_LEAD = 4.0                               # start rendering/uploading this many seconds BEFORE the minute changes
 _cpic_base: dict[int, bytes | None] = {}
 CPIC_EVERY = (1, 2, 5, 10)
 
@@ -762,7 +766,8 @@ async def cpic_clear_base(uid):
 async def cpic_render(c, uid, now=None) -> bytes:
     cfg = await cpic_cfg(uid)
     base = await cpic_get_base(c, uid)
-    return await asyncio.to_thread(clockpic.render, base, cfg["style"], cfg["color"], now or datetime.now(TZ))
+    return await asyncio.get_running_loop().run_in_executor(
+        _POOL, clockpic.render, base, cfg["style"], cfg["color"], now or datetime.now(TZ))
 
 
 async def _cpic_delete(c, ids, keep=None):
@@ -775,22 +780,48 @@ async def _cpic_delete(c, ids, keep=None):
         await c(functions.photos.DeletePhotosRequest(id=dead))
 
 
-async def push_clockpic(c, uid):
-    """Render + upload the clock photo and remove the previous clock photo."""
+async def _cpic_cleanup(c, uid, new_photo, prev_input):
+    """Delete the previous clock photo in the background (never blocks the next update)."""
+    new_id = new_photo.id
+    try:
+        old = {int(x) for x in (await db.uget(uid, "cpic_ids", "")).split(",") if x}
+        old.discard(new_id)
+        if prev_input is not None:
+            try:
+                await c(functions.photos.DeletePhotosRequest(id=[prev_input]))
+                old.discard(prev_input.id)
+            except Exception:                                    # noqa: BLE001
+                pass
+        if old:
+            await _cpic_delete(c, old, keep=new_id)
+        await db.uset(uid, "cpic_ids", str(new_id))
+    except errors.FloodWaitError:
+        pass
+    except Exception as ex:                                      # noqa: BLE001
+        log.warning("old clock photo not deleted: %s", ex)
+
+
+async def push_clockpic(c, uid, when=None):
+    """Render + upload the clock photo; the previous one is removed in the background.
+    when: the (future) time to draw. The file is uploaded first and the profile photo is switched exactly
+    when that minute starts, so viewers see the new time with no delay."""
     async with _cpic_lock.setdefault(uid, asyncio.Lock()):
-        jpg = await cpic_render(c, uid)
+        t = when or datetime.now(TZ)
+        jpg = await cpic_render(c, uid, t)
         bio = io.BytesIO(jpg)
         bio.name = "clock.jpg"
         up = await c.upload_file(bio)
+        if when is not None:
+            wait = (when.replace(second=0, microsecond=0) - datetime.now(TZ)).total_seconds()
+            if 0 < wait < 15:
+                await asyncio.sleep(wait)
         res = await c(functions.photos.UploadProfilePhotoRequest(file=up))
-        new_id = res.photo.id
-        old = {int(x) for x in (await db.uget(uid, "cpic_ids", "")).split(",") if x}
-        await db.uset(uid, "cpic_ids", ",".join(str(x) for x in (old | {new_id})))
-        try:
-            await _cpic_delete(c, old, keep=new_id)
-            await db.uset(uid, "cpic_ids", str(new_id))
-        except Exception as ex:                                  # noqa: BLE001
-            log.warning("old clock photo not deleted: %s", ex)
+        ph = res.photo
+        prev = _cpic_last.get(uid)
+        _cpic_last[uid] = types.InputPhoto(id=ph.id, access_hash=ph.access_hash, file_reference=ph.file_reference)
+        old = (await db.uget(uid, "cpic_ids", "")).split(",")
+        await db.uset(uid, "cpic_ids", ",".join([x for x in old if x] + [str(ph.id)]))
+        asyncio.create_task(_cpic_cleanup(c, uid, ph, prev))
 
 
 async def set_clockpic(uid, on) -> str:
@@ -918,26 +949,31 @@ async def c_clockpic(c, e, uid, arg):
 
 
 async def clockpic_loop(c, uid):
-    """Every minute boundary: when the photo clock is on and the interval fits, upload a new clock photo."""
+    """Wake up CPIC_LEAD seconds before every minute, pre-render the NEXT minute, upload it and switch the
+    profile photo exactly at the minute boundary."""
     while True:
         try:
             now = datetime.now(TZ)
-            await asyncio.sleep(60 - now.second - now.microsecond / 1e6 + 1.2)
+            wait = 60 - now.second - now.microsecond / 1e6 - CPIC_LEAD
+            if wait <= 0:
+                wait += 60
+            await asyncio.sleep(wait)
+            nxt = (datetime.now(TZ) + timedelta(seconds=CPIC_LEAD + 1)).replace(second=0, microsecond=0)
             if not await db.uflag(uid, "cpic", False):
                 continue
             if not await db.user_is_active(uid) or not await db.uflag(uid, "selfon", True):
                 continue
             every = int(await db.uget(uid, "cpic_every", "1") or 1)
-            if datetime.now(TZ).minute % every:
+            if nxt.minute % every:
                 continue
-            await push_clockpic(c, uid)
+            await push_clockpic(c, uid, when=nxt)
         except asyncio.CancelledError:
             raise
         except errors.FloodWaitError as ex:
             await asyncio.sleep(min(ex.seconds, 900) + 1)
         except Exception as ex:                                  # noqa: BLE001
             log.warning("clockpic %s: %s", uid, ex)
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
 
 
 async def c_remind(c, e, uid, arg):
@@ -2016,7 +2052,8 @@ async def clock_loop(c, uid):
 async def start_user(uid: int, session: str, api_id: int, api_hash: str) -> bool:
     if uid in clients:
         await stop_user(uid)
-    c = TelegramClient(StringSession(session), api_id, api_hash)
+    c = TelegramClient(StringSession(session), api_id, api_hash, connection_retries=-1, retry_delay=1,
+                       auto_reconnect=True, flood_sleep_threshold=30, request_retries=5)
     await c.connect()
     try:
         ok = await c.is_user_authorized()
@@ -2035,6 +2072,7 @@ async def start_user(uid: int, session: str, api_id: int, api_hash: str) -> bool
 async def stop_user(uid: int):
     for t in _tasks.pop(uid, []):
         t.cancel()
+    _cpic_last.pop(uid, None)
     c = clients.pop(uid, None)
     if c:
         try:

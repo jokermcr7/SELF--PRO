@@ -692,7 +692,7 @@ async def clock_view(uid, path, mk, back_path):
 
 
 async def clockpic_view(uid, path, mk, back_path):
-    """🖼 clock drawn on the profile photo: on/off, 7 colors, 8 designs, interval, preview."""
+    """🖼 clock drawn on the profile photo: on/off, 7 colors, 17 designs, interval, preview."""
     c = selfbot.clients.get(uid)
     if not c:
         return None
@@ -728,7 +728,7 @@ async def clockpic_view(uid, path, mk, back_path):
     rows += [chips[:4], chips[4:]]
     chips = [B(n + (" ⟨✓⟩" if k == cfg["style"] else ""), mk(f"ki:s:{k}"), G if k == cfg["style"] else R)
              for k, n in clockpic.STYLES]
-    rows += [chips[i:i + 2] for i in range(0, len(chips), 2)]
+    rows += [chips[i:i + 3] for i in range(0, len(chips), 3)]
     rows.append([B(f"هر {n} دقیقه" + (" ✓" if n == cfg["every"] else ""), mk(f"ki:e:{n}"), G if n == cfg["every"] else R)
                  for n in selfbot.CPIC_EVERY])
     rows.append([B("👁 پیش‌نمایش", mk("ki:v"), G), B("بازگشت", mk("k"), R)])
