@@ -1,6 +1,7 @@
 """Manager bot: onboarding (phone + keypad code login), panel, wallet, admin tools, game group."""
 import asyncio
 import html
+import io
 import logging
 import os
 import re
@@ -12,6 +13,7 @@ from telethon.sessions import StringSession
 import assets
 import botapi
 import catalog
+import clockpic
 import db
 import groupgames
 import secure
@@ -651,6 +653,8 @@ async def style_view(uid, path, mk, back_path):
 async def clock_view(uid, path, mk, back_path):
     """⏰ clock section: targets (name / family / bio) + font picker. Same look as the reference video."""
     c = selfbot.clients.get(uid)
+    if path.startswith("ki"):
+        return await clockpic_view(uid, path, mk, back_path)
     if path.startswith("kt:") or path.startswith("kp:"):
         if not c:
             return None
@@ -681,9 +685,59 @@ async def clock_view(uid, path, mk, back_path):
     fl = await selfbot.clock_flags(uid)
     sw = lambda n, t: B(f"{n} ⟨{'✓' if fl[t] else '✗'}⟩", mk(f"kt:{t}"), G if fl[t] else R)
     rows = [[sw("فامیل", "last"), sw("اسم", "name")], [sw("بیو", "bio"), B("فونت‌ها", mk("kf"), R)],
+            [B("🖼 ساعت روی عکس پروفایل", mk("ki"), G)],
             [B("بازگشت به دستورات", mk(back_path), R)]]
     return ("<b>بخش ساعت ⏰</b>\n<blockquote>ساعت زنده توی اسم، فامیل و بیو؛ دقیقاً لحظه‌ی عوض شدن دقیقه آپدیت میشه. "
-            "فونت دلخواهت رو هم انتخاب کن.</blockquote>"), rows
+            "فونت دلخواهت رو هم انتخاب کن. «ساعت روی عکس پروفایل» رو هم از دکمه‌ی پایین فعال کن.</blockquote>"), rows
+
+
+async def clockpic_view(uid, path, mk, back_path):
+    """🖼 clock drawn on the profile photo: on/off, 7 colors, 8 designs, interval, preview."""
+    c = selfbot.clients.get(uid)
+    if not c:
+        return None
+    parts = path.split(":")
+    note = ""
+    if len(parts) > 1:
+        act, val = parts[1], (parts[2] if len(parts) > 2 else "")
+        if act == "t":
+            cfg0 = await selfbot.cpic_cfg(uid)
+            err = await selfbot.set_clockpic(uid, not cfg0["on"])
+            note = f"\n⚠️ {err}" if err else ""
+        elif act == "c" and val in clockpic.COLORS:
+            await db.uset(uid, "cpic_color", val)
+            asyncio.create_task(selfbot.cpic_refresh(uid))
+        elif act == "s" and val in dict(clockpic.STYLES):
+            await db.uset(uid, "cpic_style", val)
+            asyncio.create_task(selfbot.cpic_refresh(uid))
+        elif act == "e" and val.isdigit() and int(val) in selfbot.CPIC_EVERY:
+            await db.uset(uid, "cpic_every", val)
+        elif act == "v":
+            try:
+                await selfbot.cpic_get_base(c, uid, capture=not (await selfbot.cpic_cfg(uid))["on"])
+                bio = io.BytesIO(await selfbot.cpic_render(c, uid))
+                bio.name = "clock_preview.jpg"
+                await bot.send_file(uid, bio, caption="👁 پیش‌نمایش ساعت روی عکس پروفایل")
+            except Exception:
+                log.exception("clockpic preview failed")
+                note = "\n⚠️ پیش‌نمایش ساخته نشد"
+    cfg = await selfbot.cpic_cfg(uid)
+    rows = [[B("روشن ⟨✓⟩" if cfg["on"] else "خاموش ⟨✗⟩", mk("ki:t"), G if cfg["on"] else R)]]
+    chips = [B(f"{v[1]} {v[0]}" + (" ✓" if k == cfg["color"] else ""), mk(f"ki:c:{k}"), G if k == cfg["color"] else R)
+             for k, v in clockpic.COLORS.items()]
+    rows += [chips[:4], chips[4:]]
+    chips = [B(n + (" ⟨✓⟩" if k == cfg["style"] else ""), mk(f"ki:s:{k}"), G if k == cfg["style"] else R)
+             for k, n in clockpic.STYLES]
+    rows += [chips[i:i + 2] for i in range(0, len(chips), 2)]
+    rows.append([B(f"هر {n} دقیقه" + (" ✓" if n == cfg["every"] else ""), mk(f"ki:e:{n}"), G if n == cfg["every"] else R)
+                 for n in selfbot.CPIC_EVERY])
+    rows.append([B("👁 پیش‌نمایش", mk("ki:v"), G), B("بازگشت", mk("k"), R)])
+    st = dict(clockpic.STYLES)[cfg["style"]]
+    text = ("<b>🖼 ساعت روی عکس پروفایل</b>\n"
+            f"وضعیت: {'🟢 روشن' if cfg['on'] else '🔴 خاموش'} | طرح: <b>{st}</b> | رنگ: <b>{clockpic.COLORS[cfg['color']][0]}</b> | هر <b>{cfg['every']}</b> دقیقه\n"
+            "<blockquote>ساعت روی همون عکس پروفایل فعلی‌ات کشیده میشه؛ هر چند دقیقه عکس جدید جایگزین قبلی میشه و عکس‌های اصلیت دست‌نخورده می‌مونن. "
+            "با خاموش کردن، عکس قبلیت برمی‌گرده. عکس پایه‌ی دلخواه: روی یه عکس ریپلای کن و بزن <code>.ساعت_عکس عکس</code></blockquote>" + note)
+    return text, rows
 
 
 @bot.on(events.CallbackQuery(pattern=rb"^h:"))

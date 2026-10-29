@@ -1,7 +1,7 @@
 """Diamond games (all commands in Persian), played ONLY in the special game group. Runs on the manager bot.
 
 Four games, each opens a button panel (banner + coloured buttons):
-  بازی 20  دونفره یا سه‌نفره (کاملاً شانسی؛ عدد بزرگ‌تر همه‌ی الماس‌ها رو می‌بره) — دونفره با ربات هم میشه (شانس برد بازیکن BOT_WIN_PERCENT٪، پیش‌فرض ۴۸٪)
+  بازی 20  دونفره یا سه‌نفره (کاملاً شانسی؛ عدد بزرگ‌تر همه‌ی الماس‌ها رو می‌بره) — دونفره با ربات هم میشه (BOT_WIN_PERCENT، پیش‌فرض ۴۹ برد / ۵۱ باخت)
   تاس      زوج / فرد (×1.5)  یا  حدس دقیق (×2)  — against the bot
   کازینو   تعیین مبلغ ورودی + تک‌نفره (اسلات با ربات) یا دونفره (دو بازیکن با هم)
   سکه      شیر یا خط — با ربات (برد ×2) یا با یه کاربر دیگه
@@ -12,7 +12,7 @@ Admin:                  تنظیم بازی
 
 House edge (the bot never loses on average):
   تاس زوج/فرد RTP 75%  |  حدس دقیق RTP 33%  |  سکه با ربات RTP 98%  |  اسلات RTP ~84%
-  بازی دو/سه‌نفره، دو نفره‌ی سکه و کازینو: فقط بین بازیکن‌هاست و FEE درصد مالیات می‌گیره؛ «بازی 20» با ربات: شانس برد ۴۸٪ (BOT_WIN_PERCENT).
+  بازی دو/سه‌نفره، دو نفره‌ی سکه و کازینو: فقط بین بازیکن‌هاست و FEE درصد مالیات می‌گیره؛ «بازی 20» با ربات: ۴۹٪ برد / ۵۱٪ باخت (BOT_WIN_PERCENT).
 """
 import asyncio
 import html
@@ -38,7 +38,7 @@ MAX_BET = int(os.getenv("MAX_GAME_BET", "0")) or HARD_CAP   # 0 / unset = no lim
 FEE = int(os.getenv("GAME_FEE_PERCENT", "5"))              # PvP tax: pot 88 -> tax 4 -> prize 84
 BRAND = os.getenv("BRAND", "Vip MMD")
 _rng = random.SystemRandom()          # OS cryptographic randomness (os.urandom)
-BOT_WIN_PERCENT = min(max(float(os.getenv("BOT_WIN_PERCENT", "48")), 0.0), 100.0)   # «بازی 20» with the bot: player win chance
+BOT_WIN_PERCENT = min(max(float(os.getenv("BOT_WIN_PERCENT", "49")), 0.0), 100.0)   # «بازی 20» with the bot: player win chance
 LOBBY_TIMEOUT = 180
 PANEL_TIMEOUT = 240
 MAX_OPEN_PER_USER = 2
@@ -97,10 +97,6 @@ def bot_duel_numbers(human_wins):
     hi = _rng.randint(2, 1000)
     lo = _rng.randint(1, hi - 1)
     return (hi, lo) if human_wins else (lo, hi)
-
-
-def bot_wins_chance():
-    return f"{BOT_WIN_PERCENT:g}"
 
 
 def slot_eval(v):
@@ -194,7 +190,7 @@ def register(bot, admin_ids):
                  f"👥 دونفره: جایزه {bet * 2 - bet * 2 * FEE // 100:,} 💎 (می‌تونی با ربات هم بازی کنی 🤖)\n"
                  f"👥 سه‌نفره: جایزه {bet * 3 - bet * 3 * FEE // 100:,} 💎\n"
                  f"🍀 کاملاً شانسی: به هر نفر یه عدد میاد؛ عدد بزرگ‌تر همه‌ی الماس‌ها رو می‌بره\n"
-                 f"🤖 بازی با ربات: شانس برد تو {bot_wins_chance()}٪\n➖ مالیات: {FEE}٪")
+                 f"➖ مالیات: {FEE}٪")
             return t, kb([[btn("👥 دو‌نفره", f"gp:{pid}:d2", GREEN), btn("👥👥 سه‌نفره", f"gp:{pid}:d3", GREEN)],
                           [bet_btn], [cancel]])
 
@@ -370,7 +366,7 @@ def register(bot, admin_ids):
 
     async def run_duel(lid):
         """Pure luck. PvP (2-3 humans): every player draws a random number 1..1000, highest takes the pot, ties redraw.
-        Vs the bot: the player wins with BOT_WIN_PERCENT % (default 48 / 52), numbers are shown for the look."""
+        Vs the bot: the player wins with BOT_WIN_PERCENT % (default 49 / 51), numbers are shown for the look."""
         L = lobbies[lid]
         try:
             players = L["players"]
@@ -410,7 +406,7 @@ def register(bot, admin_ids):
                               for k in range(len(players)))
             text = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🍀 شرط تمام شد</b>\n\n{lines}\n\n"
                     f"🏆 برنده: <b>{esc(wname)}</b>\n💎 جایزه: <b>{prize:,}</b> | ➖ مالیات: {tax_of(L):,}"
-                    + (f"\n🤖 بازی با ربات (شانس برد بازیکن {bot_wins_chance()}٪)" if bot_game else ""))
+                    )
             await edit_lobby(L, text, kb([[btn(f"🔁 بازی جدید ({L['bet']} 💎)", f"gr:duel:{L['bet']}:{L['kind']}", GREEN)]]))
         except Exception:
             log.exception("duel failed, refunding")

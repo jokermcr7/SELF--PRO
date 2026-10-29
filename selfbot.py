@@ -22,6 +22,7 @@ from telethon.sessions import StringSession
 
 import assets
 import catalog
+import clockpic
 import db
 import utils
 
@@ -36,7 +37,7 @@ _tasks: dict[int, list] = {}
 TOGGLES = [
     ("afk", "😴 منشی خودکار", False),
     ("antidel", "🗑 ضد حذف/ادیت", True),
-    ("ttl", "⏳ ذخیره تایمردار", True),
+    ("ttl", "⏳ ذخیره تایمردار و ادیت‌شده‌ها", True),
     ("kw", "💬 پاسخ کلمات", True),
     ("clock", "🕒 ساعت توی اسم", False),
 ]
@@ -711,6 +712,232 @@ async def c_clock(c, e, uid, arg):
                             "`.ساعت روشن` / `.ساعت خاموش`\n`.ساعت فامیل روشن` / `.ساعت بیو روشن`\n`.ساعت فونت 3`")
     await set_clock_target(uid, target, v)
     await e.edit(f"⏰ ساعت {'روشن' if v else 'خاموش'} شد ({ {'name': 'اسم', 'last': 'فامیل', 'bio': 'بیو'}[target] })")
+
+
+# ---------------- clock on the profile PHOTO ----------------
+# base photo = the user's own profile picture (stored once), a fresh JPEG with the clock is uploaded every N minutes
+# and the previous clock photo is deleted, so the original pictures stay untouched underneath.
+_cpic_lock: dict[int, asyncio.Lock] = {}
+_cpic_base: dict[int, bytes | None] = {}
+CPIC_EVERY = (1, 2, 5, 10)
+
+
+async def cpic_cfg(uid):
+    return {
+        "on": await db.uflag(uid, "cpic", False),
+        "style": clockpic.style_key(await db.uget(uid, "cpic_style", "0")),
+        "color": clockpic.color_key(await db.uget(uid, "cpic_color", "red")),
+        "every": int(await db.uget(uid, "cpic_every", "1") or 1),
+    }
+
+
+async def cpic_get_base(c, uid, capture=False):
+    """Stored base photo bytes. capture=True: if none stored, take the current profile photo (once)."""
+    import base64
+    if uid not in _cpic_base:
+        v = await db.uget(uid, "cpic_base")
+        _cpic_base[uid] = base64.b64decode(v) if v else None
+    if _cpic_base[uid] is None and capture:
+        try:
+            raw = await c.download_profile_photo("me", file=bytes)
+            if raw:
+                await cpic_set_base(uid, raw)
+        except Exception as ex:                                  # noqa: BLE001
+            log.warning("profile photo capture failed: %s", ex)
+    return _cpic_base.get(uid)
+
+
+async def cpic_set_base(uid, raw: bytes):
+    import base64
+    norm_raw = await asyncio.to_thread(clockpic.normalize_base, raw)
+    _cpic_base[uid] = norm_raw
+    await db.uset(uid, "cpic_base", base64.b64encode(norm_raw).decode())
+
+
+async def cpic_clear_base(uid):
+    _cpic_base[uid] = None
+    await db.udel(uid, "cpic_base")
+
+
+async def cpic_render(c, uid, now=None) -> bytes:
+    cfg = await cpic_cfg(uid)
+    base = await cpic_get_base(c, uid)
+    return await asyncio.to_thread(clockpic.render, base, cfg["style"], cfg["color"], now or datetime.now(TZ))
+
+
+async def _cpic_delete(c, ids, keep=None):
+    if not ids:
+        return
+    photos = await c.get_profile_photos("me", limit=12)
+    dead = [types.InputPhoto(id=p.id, access_hash=p.access_hash, file_reference=p.file_reference)
+            for p in photos if p.id in ids and p.id != keep]
+    if dead:
+        await c(functions.photos.DeletePhotosRequest(id=dead))
+
+
+async def push_clockpic(c, uid):
+    """Render + upload the clock photo and remove the previous clock photo."""
+    async with _cpic_lock.setdefault(uid, asyncio.Lock()):
+        jpg = await cpic_render(c, uid)
+        bio = io.BytesIO(jpg)
+        bio.name = "clock.jpg"
+        up = await c.upload_file(bio)
+        res = await c(functions.photos.UploadProfilePhotoRequest(file=up))
+        new_id = res.photo.id
+        old = {int(x) for x in (await db.uget(uid, "cpic_ids", "")).split(",") if x}
+        await db.uset(uid, "cpic_ids", ",".join(str(x) for x in (old | {new_id})))
+        try:
+            await _cpic_delete(c, old, keep=new_id)
+            await db.uset(uid, "cpic_ids", str(new_id))
+        except Exception as ex:                                  # noqa: BLE001
+            log.warning("old clock photo not deleted: %s", ex)
+
+
+async def set_clockpic(uid, on) -> str:
+    """Turn the photo clock on/off. Returns '' on success or an error text."""
+    c = clients.get(uid)
+    if not c:
+        return "سلف روشن نیست"
+    if on:
+        base = await cpic_get_base(c, uid, capture=True)
+        await db.uset_flag(uid, "cpic", True)
+        try:
+            await push_clockpic(c, uid)
+        except errors.FloodWaitError as ex:
+            return f"تلگرام برای تغییر عکس پروفایل {ex.seconds} ثانیه صبر خواست؛ بعداً خودکار ادامه میده"
+        except Exception as ex:                                  # noqa: BLE001
+            log.warning("clockpic on failed: %s", ex)
+            await db.uset_flag(uid, "cpic", False)
+            return f"آپلود عکس ناموفق بود ({type(ex).__name__})"
+        return "" if base else ""
+    await db.uset_flag(uid, "cpic", False)
+    try:
+        ids = {int(x) for x in (await db.uget(uid, "cpic_ids", "")).split(",") if x}
+        await _cpic_delete(c, ids)
+        await db.udel(uid, "cpic_ids")
+    except Exception as ex:                                      # noqa: BLE001
+        log.warning("clock photo removal failed: %s", ex)
+        return "عکس ساعت پاک نشد؛ دستی از پروفایل حذفش کن"
+    return ""
+
+
+async def cpic_refresh(uid):
+    """After a style / color / interval change: show it right away (if the photo clock is on)."""
+    c = clients.get(uid)
+    if c and await db.uflag(uid, "cpic", False):
+        try:
+            await push_clockpic(c, uid)
+        except Exception as ex:                                  # noqa: BLE001
+            log.warning("clockpic refresh: %s", ex)
+
+
+def _pick_color(w):
+    k = norm(w)
+    for key, (fa, _e, _c) in clockpic.COLORS.items():
+        if k in (key, norm(fa)):
+            return key
+    if utils.to_en_digits(w).isdigit() and 1 <= int(utils.to_en_digits(w)) <= len(clockpic.COLOR_ORDER):
+        return clockpic.COLOR_ORDER[int(utils.to_en_digits(w)) - 1]
+    return None
+
+
+def _pick_style(w):
+    k = norm(w)
+    for i, (key, fa) in enumerate(clockpic.STYLES):
+        if k in (key, norm(fa)):
+            return key
+    if utils.to_en_digits(w).isdigit() and 1 <= int(utils.to_en_digits(w)) <= len(clockpic.STYLES):
+        return clockpic.STYLES[int(utils.to_en_digits(w)) - 1][0]
+    return None
+
+
+def cpic_help(cfg):
+    st = dict(clockpic.STYLES)[cfg["style"]]
+    return (f"🖼 **ساعت روی عکس پروفایل** {'🟢 روشن' if cfg['on'] else '🔴 خاموش'}\n"
+            f"🎨 طرح: {st} | رنگ: {clockpic.COLORS[cfg['color']][0]} | هر {cfg['every']} دقیقه\n\n"
+            "`.ساعت_عکس روشن` / `.ساعت_عکس خاموش`\n"
+            "`.ساعت_عکس رنگ آبی` (قرمز، آبی، سبز، بنفش، طلایی، صورتی، فیروزه‌ای یا شماره ۱ تا ۷)\n"
+            "`.ساعت_عکس طرح 3` (" + "، ".join(f"{i}={n}" for i, (_k, n) in enumerate(clockpic.STYLES, 1)) + ")\n"
+            "`.ساعت_عکس فاصله 2` (هر ۱ / ۲ / ۵ / ۱۰ دقیقه)\n"
+            "`.ساعت_عکس پیش‌نمایش` — نمونه توی Saved Messages\n"
+            "ریپلای روی یه عکس + `.ساعت_عکس عکس` — عکس پایه‌ی دلخواه\n"
+            "`.ساعت_عکس بازنشانی` — خاموش + فراموش کردن عکس پایه")
+
+
+async def c_clockpic(c, e, uid, arg):
+    w = arg.split()
+    sub = norm(w[0]) if w else ""
+    cfg = await cpic_cfg(uid)
+    if not w:
+        return await e.edit(cpic_help(cfg))
+    if sub in ("روشن", "on", "فعال", "خاموش", "off", "غیرفعال"):
+        on = sub in ("روشن", "on", "فعال")
+        await e.edit("⏳ در حال " + ("ساخت ساعت روی عکس ..." if on else "برداشتن ساعت از عکس ..."))
+        err = await set_clockpic(uid, on)
+        return await e.edit(f"{'🟢 ساعت روی عکس روشن شد' if on else '🔴 ساعت روی عکس خاموش شد (عکس قبلیت برگشت)'}" + (f"\n⚠️ {err}" if err else ""))
+    if sub in ("رنگ", "color"):
+        k = _pick_color(w[1]) if len(w) > 1 else None
+        if not k:
+            return await e.edit("🎨 رنگ‌ها: " + " | ".join(f"{i}. {v[1]} {v[0]}" for i, v in enumerate(clockpic.COLORS.values(), 1))
+                                + "\nمثال: `.ساعت_عکس رنگ بنفش`")
+        await db.uset(uid, "cpic_color", k)
+        await e.edit(f"🎨 رنگ ساعت: {clockpic.COLORS[k][1]} {clockpic.COLORS[k][0]}")
+        return await cpic_refresh(uid)
+    if sub in ("طرح", "style", "مدل"):
+        k = _pick_style(w[1]) if len(w) > 1 else None
+        if not k:
+            return await e.edit("🖼 طرح‌ها: " + " | ".join(f"{i}. {n}" for i, (_k, n) in enumerate(clockpic.STYLES, 1))
+                                + "\nمثال: `.ساعت_عکس طرح 4`")
+        await db.uset(uid, "cpic_style", k)
+        await e.edit(f"🖼 طرح ساعت: {dict(clockpic.STYLES)[k]}")
+        return await cpic_refresh(uid)
+    if sub in ("فاصله", "هر", "interval"):
+        n = int(utils.to_en_digits(w[1])) if len(w) > 1 and utils.to_en_digits(w[1]).isdigit() else 0
+        if n not in CPIC_EVERY:
+            return await e.edit("فاصله‌ی آپدیت: `.ساعت_عکس فاصله 1` (۱ / ۲ / ۵ / ۱۰ دقیقه)")
+        await db.uset(uid, "cpic_every", n)
+        return await e.edit(f"⏱ عکس ساعت هر {n} دقیقه آپدیت میشه")
+    if sub in ("پیشنمایش", "نمونه", "preview"):
+        await cpic_get_base(c, uid, capture=not cfg["on"])
+        bio = io.BytesIO(await cpic_render(c, uid))
+        bio.name = "clock_preview.jpg"
+        await c.send_file("me", bio, caption="👁 پیش‌نمایش ساعت روی عکس")
+        return await e.edit("👁 پیش‌نمایش توی Saved Messages فرستاده شد")
+    if sub in ("عکس", "photo"):
+        r = await e.get_reply_message() if e.is_reply else None
+        if not r or not (r.photo or (r.document and (r.document.mime_type or "").startswith("image/"))):
+            return await e.edit("روی یه **عکس** ریپلای کن و بزن `.ساعت_عکس عکس`")
+        await cpic_set_base(uid, await r.download_media(file=bytes))
+        await e.edit("✅ عکس پایه ذخیره شد")
+        return await cpic_refresh(uid)
+    if sub in ("بازنشانی", "ریست", "reset"):
+        err = await set_clockpic(uid, False)
+        await cpic_clear_base(uid)
+        return await e.edit("♻️ ساعت روی عکس خاموش شد و عکس پایه پاک شد؛ دفعه‌ی بعد از عکس پروفایل فعلی ساخته میشه" + (f"\n⚠️ {err}" if err else ""))
+    await e.edit(cpic_help(cfg))
+
+
+async def clockpic_loop(c, uid):
+    """Every minute boundary: when the photo clock is on and the interval fits, upload a new clock photo."""
+    while True:
+        try:
+            now = datetime.now(TZ)
+            await asyncio.sleep(60 - now.second - now.microsecond / 1e6 + 1.2)
+            if not await db.uflag(uid, "cpic", False):
+                continue
+            if not await db.user_is_active(uid) or not await db.uflag(uid, "selfon", True):
+                continue
+            every = int(await db.uget(uid, "cpic_every", "1") or 1)
+            if datetime.now(TZ).minute % every:
+                continue
+            await push_clockpic(c, uid)
+        except asyncio.CancelledError:
+            raise
+        except errors.FloodWaitError as ex:
+            await asyncio.sleep(min(ex.seconds, 900) + 1)
+        except Exception as ex:                                  # noqa: BLE001
+            log.warning("clockpic %s: %s", uid, ex)
+            await asyncio.sleep(5)
 
 
 async def c_remind(c, e, uid, arg):
@@ -1496,7 +1723,7 @@ COMMANDS = {
     "price": c_price, "weather": c_weather, "owghat": c_owghat, "dl": c_dl,
     "save": c_save, "del": c_del, "pin": c_pin, "unpin": c_unpin,
     "block": c_block, "unblock": c_unblock, "stats": c_stats,
-    "afk": c_afk, "afktext": c_afktext, "kw": c_kw, "clock": c_clock,
+    "afk": c_afk, "afktext": c_afktext, "kw": c_kw, "clock": c_clock, "clockpic": c_clockpic,
     "remind": c_remind, "pass": c_pass, "rand": c_rand, "choose": c_choose,
     "dice": _dice("🎲"), "dart": _dice("🎯"), "ball": _dice("🏀"),
     "bal": c_bal, "top": c_top, "buy": c_buy, "give": c_give,
@@ -1531,7 +1758,7 @@ FA = {
 FA_LONG = {
     "تبدیل_متن_به_ویس": "tts", "ویس": "tts", "ترجمه_متن": "tr", "ماشین_حساب": "calc", "قیمت_ارز": "price",
     "آب_و_هوا": "weather", "اوقات_شرعی": "owghat", "دانلود_ویدیو": "dl", "ساخت_کیوآر": "qr", "ساخت_رمز": "pass",
-    "عدد_تصادفی": "rand", "انتخاب_تصادفی": "choose", "ساعت_زنده": "clock", "ساعت_شمسی": "time",
+    "عدد_تصادفی": "rand", "انتخاب_تصادفی": "choose", "ساعت_زنده": "clock", "ساعت_عکس": "clockpic", "ساعت_پروفایل": "clockpic", "ساعت_روی_عکس": "clockpic", "ساعت_شمسی": "time",
     "منشی_خودکار": "afk", "ریاکشن_خودکار": "react", "تغییر_بیو": "bio", "تغییر_اسم": "setname",
     "اطلاعات_من": "me", "اطلاعات_کاربر": "info", "آیدی_چت": "id", "آمار_چت": "stats", "ذخیره_پیام": "save",
     "حذف_پیام": "del", "شمارش_معکوس": "cd", "ارسال_زمانبندی": "later", "پیام_خودتخریب": "selfdestruct",
@@ -1545,6 +1772,18 @@ ALIAS = {norm(k): v for k, v in {**FA, **FA_LONG}.items()}
 def resolve(cmd: str):
     k = norm(cmd)
     return ALIAS.get(k) or (k if k in COMMANDS else None)
+
+
+def _media_key(msg):
+    """Stable id of the photo/document in a message (None when there is no real media) - detects edited media."""
+    m = getattr(msg, "media", None)
+    if m is None or getattr(m, "webpage", None):
+        return None
+    for attr in ("photo", "document"):
+        o = getattr(m, attr, None)
+        if o is not None and getattr(o, "id", None) is not None:
+            return f"{attr}:{o.id}"
+    return type(m).__name__
 
 
 # ---------------- event wiring ----------------
@@ -1668,9 +1907,10 @@ def attach(c: TelegramClient, uid: int):
 
         if e.is_private:
             # remember for anti-delete / anti-edit
-            if await db.uflag(uid, "antidel", True):
-                cache[e.id] = (name, e.raw_text or ("[مدیا]" if e.media else ""))
-                if len(cache) > 3000:
+            if await db.uflag(uid, "antidel", True) or await db.uflag(uid, "ttl", True):
+                cache[e.id] = (name, e.raw_text or ("[مدیا]" if e.media else ""), _media_key(e.message),
+                               e.sender_id, getattr(sender, "username", None))
+                if len(cache) > 6000:
                     cache.pop(next(iter(cache)))
             # save self-destructing media
             if await db.uflag(uid, "ttl", True) and getattr(e.message.media, "ttl_seconds", None):
@@ -1701,23 +1941,55 @@ def attach(c: TelegramClient, uid: int):
     async def on_deleted(e):
         if not await db.user_is_active(uid) or not await db.uflag(uid, "selfon", True):
             return
+        notify = await db.uflag(uid, "antidel", True)
         for i in e.deleted_ids:
             if i in cache:
-                name, txt = cache.pop(i)
-                await backup_send(c, uid, text=f"🗑 **پیام حذف شد**\n👤 {name}\n💬 {txt}")
+                item = cache.pop(i)
+                if notify:
+                    await backup_send(c, uid, text=f"🗑 **پیام حذف شد**\n👤 {item[0]}\n💬 {item[1]}")
 
     @c.on(events.MessageEdited(incoming=True))
     async def on_edited(e):
+        """Edited private messages -> backup group (works with «ضد حذف» OR «ذخیره تایمردار و ادیت‌شده‌ها»)."""
         if not e.is_private or not await db.user_is_active(uid) or not await db.uflag(uid, "selfon", True):
             return
-        if not await db.uflag(uid, "antidel", True):
+        if not (await db.uflag(uid, "antidel", True) or await db.uflag(uid, "ttl", True)):
+            return
+        if e.sender_id == 777000:
             return
         old = cache.get(e.id)
-        new = e.raw_text or ""
-        if old and old[1] != new:
-            await backup_send(c, uid, text=f"✏️ **پیام ادیت شد**\n👤 {old[0]}\nقبل: {old[1]}\nبعد: {new}")
+        new = e.raw_text or ("[مدیا]" if e.media else "")
+        mk = _media_key(e.message)
+        if old and old[1] == new and old[2] == mk:
+            return                                           # nothing visible changed (reaction, read mark...)
         if old:
-            cache[e.id] = (old[0], new)
+            name, before, old_mk, sid, uname = old
+        else:
+            try:
+                sender = await e.get_sender()
+            except Exception:
+                sender = None
+            name = utils.clean_name(getattr(sender, "first_name", "") or str(e.sender_id))
+            before, old_mk, sid, uname = None, None, e.sender_id, getattr(sender, "username", None)
+        when = datetime.now(TZ).strftime("%H:%M:%S")
+        who = f"👤 {name}\n🆔 {sid}" + (f" | @{uname}" if uname else "")
+        if before is None:
+            body = f"قبل: (ثبت نشده بود؛ قبل از روشن شدن سلف یا ری‌استارت)\nبعد: {new}"
+        else:
+            body = f"قبل: {before}\nبعد: {new}"
+        msg = f"✏️ **پیام ادیت شد** ({when})\n{who}\n{body}"[:4000]
+        await backup_send(c, uid, text=msg)
+        if mk and mk != old_mk and not getattr(e.message.media, "webpage", None):
+            d = tempfile.mkdtemp()                           # the edit replaced the media: keep the new file too
+            try:
+                path = await e.message.download_media(file=d + "/")
+                if path:
+                    await backup_send(c, uid, file=path, caption=f"✏️ مدیای جدیدِ پیام ادیت‌شده\n{who}")
+            except Exception:
+                log.exception("edited media save failed")
+            finally:
+                shutil.rmtree(d, ignore_errors=True)
+        cache[e.id] = (name, new, mk, sid, uname)
 
 
 async def clock_loop(c, uid):
@@ -1755,7 +2027,7 @@ async def start_user(uid: int, session: str, api_id: int, api_hash: str) -> bool
         return False
     attach(c, uid)
     clients[uid] = c
-    _tasks[uid] = [asyncio.create_task(clock_loop(c, uid))]
+    _tasks[uid] = [asyncio.create_task(clock_loop(c, uid)), asyncio.create_task(clockpic_loop(c, uid))]
     log.info("self started for %s", uid)
     return True
 
