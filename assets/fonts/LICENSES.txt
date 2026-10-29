@@ -1,0 +1,3 @@
+Poppins (Bold, Medium, Light) - SIL Open Font License 1.1 - Indian Type Foundry
+DejaVu Sans Mono Bold - Bitstream Vera / DejaVu free license
+Bundled so the clock-on-photo feature renders the same on any server.
