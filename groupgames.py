@@ -1,7 +1,7 @@
 """Diamond games (all commands in Persian), played ONLY in the special game group. Runs on the manager bot.
 
 Four games, each opens a button panel (banner + coloured buttons):
-  بازی 20  دونفره یا سه‌نفره (شانسی با عدد random.org؛ عدد بزرگ‌تر همه‌ی الماس‌ها رو می‌بره) — دونفره با ربات هم میشه
+  بازی 20  دونفره یا سه‌نفره (کاملاً شانسی؛ عدد بزرگ‌تر همه‌ی الماس‌ها رو می‌بره) — دونفره با ربات هم میشه (شانس برد بازیکن BOT_WIN_PERCENT٪، پیش‌فرض ۴۸٪)
   تاس      زوج / فرد (×1.5)  یا  حدس دقیق (×2)  — against the bot
   کازینو   تعیین مبلغ ورودی + تک‌نفره (اسلات با ربات) یا دونفره (دو بازیکن با هم)
   سکه      شیر یا خط — با ربات (برد ×2) یا با یه کاربر دیگه
@@ -12,7 +12,7 @@ Admin:                  تنظیم بازی
 
 House edge (the bot never loses on average):
   تاس زوج/فرد RTP 75%  |  حدس دقیق RTP 33%  |  سکه با ربات RTP 98%  |  اسلات RTP ~84%
-  بازی دو/سه‌نفره، دو نفره‌ی سکه و کازینو: فقط بین بازیکن‌هاست و FEE درصد مالیات می‌گیره؛ با ربات: RTP 95%.
+  بازی دو/سه‌نفره، دو نفره‌ی سکه و کازینو: فقط بین بازیکن‌هاست و FEE درصد مالیات می‌گیره؛ «بازی 20» با ربات: شانس برد ۴۸٪ (BOT_WIN_PERCENT).
 """
 import asyncio
 import html
@@ -23,7 +23,6 @@ import random
 import re
 import time
 
-import aiohttp
 from telethon import events, types
 
 import botapi
@@ -38,7 +37,8 @@ HARD_CAP = 10 ** 9                                         # "unlimited" (only k
 MAX_BET = int(os.getenv("MAX_GAME_BET", "0")) or HARD_CAP   # 0 / unset = no limit
 FEE = int(os.getenv("GAME_FEE_PERCENT", "5"))              # PvP tax: pot 88 -> tax 4 -> prize 84
 BRAND = os.getenv("BRAND", "Vip MMD")
-_rng = random.SystemRandom()
+_rng = random.SystemRandom()          # OS cryptographic randomness (os.urandom)
+BOT_WIN_PERCENT = min(max(float(os.getenv("BOT_WIN_PERCENT", "48")), 0.0), 100.0)   # «بازی 20» with the bot: player win chance
 LOBBY_TIMEOUT = 180
 PANEL_TIMEOUT = 240
 MAX_OPEN_PER_USER = 2
@@ -86,27 +86,21 @@ def pay_of(bet, mult):
     return int(bet * mult)
 
 
-_rnd_lock = asyncio.Lock()               # random.org guideline: never more than one request at a time
+def rand_ints(n, lo, hi):
+    """n independent uniformly random integers lo..hi from the OS cryptographic generator (random.SystemRandom)."""
+    return [_rng.randint(lo, hi) for _ in range(n)]
 
 
-async def true_random_ints(n, lo, hi):
-    """n truly random integers (lo..hi) from random.org (atmospheric noise), one block request.
-    Falls back to the OS cryptographic generator if random.org is unreachable / over quota.
-    Returns (list, source_label)."""
-    try:
-        async with _rnd_lock:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=12)) as http:
-                async with http.get("https://www.random.org/integers/",
-                                    params={"num": n, "min": lo, "max": hi, "col": 1, "base": 10, "format": "plain", "rnd": "new"},
-                                    headers={"User-Agent": f"{BRAND} game bot"}) as r:
-                    txt = (await r.text()).strip()
-                    ok = r.status == 200
-        vals = [int(x) for x in txt.split()] if ok else []
-        if len(vals) == n and all(lo <= v <= hi for v in vals):
-            return vals, "random.org"
-    except Exception as ex:                          # noqa: BLE001
-        log.warning("random.org failed: %s", ex)
-    return [_rng.randint(lo, hi) for _ in range(n)], "local"
+def bot_duel_numbers(human_wins):
+    """Display numbers for «بازی 20» vs the bot. The outcome is decided first (human wins with BOT_WIN_PERCENT %),
+    then two different numbers 1..1000 are drawn at random and ordered to match it. Returns (human, bot)."""
+    hi = _rng.randint(2, 1000)
+    lo = _rng.randint(1, hi - 1)
+    return (hi, lo) if human_wins else (lo, hi)
+
+
+def bot_wins_chance():
+    return f"{BOT_WIN_PERCENT:g}"
 
 
 def slot_eval(v):
@@ -199,7 +193,8 @@ def register(bot, admin_ids):
             t = (bet_head(P) + "\n<b>نوع بازی رو انتخاب کن 👇</b>\n"
                  f"👥 دونفره: جایزه {bet * 2 - bet * 2 * FEE // 100:,} 💎 (می‌تونی با ربات هم بازی کنی 🤖)\n"
                  f"👥 سه‌نفره: جایزه {bet * 3 - bet * 3 * FEE // 100:,} 💎\n"
-                 f"🍀 کاملاً شانسی: به هر نفر یه عدد از random.org میاد؛ عدد بزرگ‌تر همه‌ی الماس‌ها رو می‌بره\n➖ مالیات: {FEE}٪")
+                 f"🍀 کاملاً شانسی: به هر نفر یه عدد میاد؛ عدد بزرگ‌تر همه‌ی الماس‌ها رو می‌بره\n"
+                 f"🤖 بازی با ربات: شانس برد تو {bot_wins_chance()}٪\n➖ مالیات: {FEE}٪")
             return t, kb([[btn("👥 دو‌نفره", f"gp:{pid}:d2", GREEN), btn("👥👥 سه‌نفره", f"gp:{pid}:d3", GREEN)],
                           [bet_btn], [cancel]])
 
@@ -374,33 +369,39 @@ def register(bot, admin_ids):
         return v if isinstance(v, int) and v > 0 else (_rng.randint(1, 64) if emoji == "🎰" else _rng.randint(1, 6))
 
     async def run_duel(lid):
-        """Pure luck: every player gets a number 1..1000 from random.org; the highest number takes the whole pot.
-        Ties: only the tied players draw again."""
+        """Pure luck. PvP (2-3 humans): every player draws a random number 1..1000, highest takes the pot, ties redraw.
+        Vs the bot: the player wins with BOT_WIN_PERCENT % (default 48 / 52), numbers are shown for the look."""
         L = lobbies[lid]
         try:
             players = L["players"]
             nums = [[] for _ in players]
-            order = list(range(len(players)))
-            src = "random.org"
-            for _rnd in range(4):
-                live = lobby_text(L, "")
-                lines = "\n".join(f"🍀 {esc(players[k][1])}: " + (" ← ".join(map(str, nums[k])) or "—") for k in range(len(players)))
-                await edit_lobby(L, f"{live}\n\n{lines}\n\n⏳ در حال گرفتن عدد شانسی از random.org ...", kb([]))
-                vals, src = await true_random_ints(len(order), 1, 1000)
+            bot_game = any(u == 0 for u, _ in players)
+            if bot_game:
+                h = next(k for k, (u, _) in enumerate(players) if u != 0)
+                human_wins = _rng.randrange(10000) < int(round(BOT_WIN_PERCENT * 100))
+                await edit_lobby(L, lobby_text(L, "") + "\n\n🎲 قرعه‌کشی ...", kb([]))
                 await asyncio.sleep(1.5)
-                drawn = {}
-                for i, v in zip(order, vals):
-                    nums[i].append(v)
-                    drawn[i] = v
-                top = max(drawn.values())
-                order = [i for i, v in drawn.items() if v == top]
-                if len(order) == 1:
-                    break
-            if len(order) == 1:
-                win = order[0]
-            else:                                            # 4 ties in a row (practically impossible): one last true-random pick
-                pick, src = await true_random_ints(1, 0, len(order) - 1)
-                win = order[pick[0]]
+                hv, bv = bot_duel_numbers(human_wins)
+                for k in range(len(players)):
+                    nums[k].append(hv if k == h else bv)
+                win = h if human_wins else 1 - h
+            else:
+                order = list(range(len(players)))
+                for _rnd in range(4):
+                    live = lobby_text(L, "")
+                    lines = "\n".join(f"🍀 {esc(players[k][1])}: " + (" ← ".join(map(str, nums[k])) or "—") for k in range(len(players)))
+                    await edit_lobby(L, f"{live}\n\n{lines}\n\n🎲 قرعه‌کشی ...", kb([]))
+                    vals = rand_ints(len(order), 1, 1000)
+                    await asyncio.sleep(1.5)
+                    drawn = {}
+                    for i, v in zip(order, vals):
+                        nums[i].append(v)
+                        drawn[i] = v
+                    top = max(drawn.values())
+                    order = [i for i, v in drawn.items() if v == top]
+                    if len(order) == 1:
+                        break
+                win = order[0] if len(order) == 1 else order[rand_ints(1, 0, len(order) - 1)[0]]
             wid, wname = players[win]
             prize = prize_of(L)
             if wid:
@@ -408,8 +409,8 @@ def register(bot, admin_ids):
             lines = "\n".join(f"{'🏆' if k == win else '▫️'} {esc(players[k][1])}: " + " ← ".join(map(str, nums[k]))
                               for k in range(len(players)))
             text = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🍀 شرط تمام شد</b>\n\n{lines}\n\n"
-                    f"🏆 برنده: <b>{esc(wname)}</b>\n💎 جایزه: <b>{prize:,}</b> | ➖ مالیات: {tax_of(L):,}\n"
-                    + ("🔐 عددها از random.org (نویز جوی) گرفته شد" if src == "random.org" else "🔐 عددها با تولیدکننده‌ی امن سرور گرفته شد"))
+                    f"🏆 برنده: <b>{esc(wname)}</b>\n💎 جایزه: <b>{prize:,}</b> | ➖ مالیات: {tax_of(L):,}"
+                    + (f"\n🤖 بازی با ربات (شانس برد بازیکن {bot_wins_chance()}٪)" if bot_game else ""))
             await edit_lobby(L, text, kb([[btn(f"🔁 بازی جدید ({L['bet']} 💎)", f"gr:duel:{L['bet']}:{L['kind']}", GREEN)]]))
         except Exception:
             log.exception("duel failed, refunding")
