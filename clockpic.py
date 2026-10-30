@@ -1701,6 +1701,284 @@ STYLES += [("hand1", "🩸 دست قرمز ۱"), ("hand2", "🩸 دست قرمز
 _DRAW.update({"hand1": _hand1, "hand2": _hand2, "hand3": _hand3})
 
 
+# ------------------------------------------------------------------ 5 premium designs
+def _lerp(a, b, t):
+    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+
+def _ramp(stops, t):
+    """stops = [(pos, rgb), ...] sorted; returns the interpolated rgb at t."""
+    t = min(1, max(0, t))
+    for (p0, c0), (p1, c1) in zip(stops, stops[1:]):
+        if p0 <= t <= p1:
+            return _lerp(c0, c1, (t - p0) / max(1e-6, p1 - p0))
+    return stops[-1][1]
+
+
+def _starfield(img, n, seed, big=6):
+    rnd = random.Random(seed)
+    lay = _layer()
+    d = ImageDraw.Draw(lay)
+    glow = _layer()
+    gd = ImageDraw.Draw(glow)
+    for i in range(n):
+        x, y = rnd.randint(0, S), rnd.randint(0, S)
+        k = rnd.random() ** 2
+        r = 0.7 + 1.6 * k
+        tintc = rnd.choice(((255, 255, 255), (200, 220, 255), (255, 236, 210)))
+        d.ellipse((x - r, y - r, x + r, y + r), fill=tintc + (int(90 + 165 * k),))
+        if i < big:
+            gd.ellipse((x - 5, y - 5, x + 5, y + 5), fill=tintc + (200,))
+            d.line((x - 14, y, x + 14, y), fill=tintc + (120,), width=1)
+            d.line((x, y - 14, x, y + 14), fill=tintc + (120,), width=1)
+    img = _over(img, glow.filter(ImageFilter.GaussianBlur(5)))
+    return _over(img, lay)
+
+
+def _bhole(img, c, hm, date, now):
+    """سیاه‌چاله: lensed accretion disk (hot inside, doppler-bright on one side), photon ring, star dust."""
+    img = _dim(img, 0.86, vignette=False)
+    img = _starfield(img, 190, now.hour * 60 + now.minute // 10)
+    cx, cy, R = S / 2, 292, 112
+    stops = [(0, tint(c, 0.95)), (0.22, tint(c, 0.55)), (0.55, c), (1, shade(c, 0.6))]
+    disk = _layer()
+    d = ImageDraw.Draw(disk)
+    N = 34
+    for i in range(N):
+        t = i / (N - 1)
+        rx = R * 1.18 + t * 340
+        ry = rx * 0.2
+        a = int(70 + 185 * (1 - t) ** 0.9)
+        d.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), outline=_ramp(stops, t) + (a,), width=int(13 * (1 - t)) + 3)
+    dop = Image.linear_gradient("L").rotate(90).resize((S, S))                    # bright on the approaching (left) side
+    dop = dop.point(lambda p: int(110 + 145 * (p / 255)))
+    disk.putalpha(ImageChops.multiply(disk.split()[3], dop))
+    img = _over(img, disk.filter(ImageFilter.GaussianBlur(14)))
+    img = _over(img, disk.filter(ImageFilter.GaussianBlur(2)))
+    halo = _layer()                                                              # lensed back-of-disk wrapping the hole
+    hd = ImageDraw.Draw(halo)
+    for k, (w, a) in enumerate(((14, 230), (9, 170), (6, 110))):
+        rr = R * (1.1 + 0.11 * k)
+        hd.arc((cx - rr, cy - rr, cx + rr, cy + rr), 188, 352, fill=_ramp(stops, 0.15 + 0.25 * k) + (a,), width=w)
+        hd.arc((cx - rr, cy - rr, cx + rr, cy + rr), 8, 172, fill=_ramp(stops, 0.2 + 0.25 * k) + (a // 3,), width=w // 2 + 1)
+    img = _glow_from_mask(img, halo.split()[3], c, 18, 1.2, 1)
+    img = _over(img, halo)
+    hole = _layer()
+    ImageDraw.Draw(hole).ellipse((cx - R, cy - R, cx + R, cy + R), fill=(0, 0, 0, 255))
+    img = _over(img, hole)
+    ring = _layer()
+    ImageDraw.Draw(ring).ellipse((cx - R - 2, cy - R - 2, cx + R + 2, cy + R + 2), outline=tint(c, 0.9) + (255,), width=4)
+    img = _glow_from_mask(img, ring.split()[3], c, 12, 1.8, 2)
+    img = _over(img, ring)
+    front = Image.new("L", (S, S), 0)                                            # the near half of the disk passes IN FRONT of the hole
+    ImageDraw.Draw(front).rectangle((0, cy + 2, S, S), fill=255)
+    fr = _layer()
+    fr.paste(disk, (0, 0), front)
+    img = _over(img, fr)
+    f = _fit("Poppins-Bold.ttf", hm, 520, 190)
+    img = glow_text(img, hm, (S / 2, 610), f, c, radius=22, core=(255, 255, 255), strength=1.4)
+    lay = _layer()
+    ImageDraw.Draw(lay).line([(S / 2 - 120, 706), (S / 2 + 120, 706)], fill=c + (255,), width=3)
+    img = _over(_glow_from_mask(img, lay.split()[3], c, 6, 1.2, 1), lay)
+    return plain_text(img, date, (S / 2, 748), _font("Poppins-Medium.ttf", 32), tint(c, 0.6) + (255,))
+
+
+def _metal_fill(img, mask, c, light=0.55, dark=0.55, bevel=2):
+    """Fill an L mask with brushed metal tinted by c: diagonal gradient + bevel light/dark edges."""
+    g = Image.linear_gradient("L").rotate(45, resample=Image.BICUBIC).resize((S, S))
+    top, bot = tint(c, light), shade(c, dark)
+    mid = c
+    strip = Image.new("RGB", (1, 256))
+    strip.putdata([_ramp([(0, top), (0.5, mid), (0.55, shade(c, 0.25)), (1, bot)], i / 255) for i in range(256)])
+    fill = Image.merge("RGB", [g] * 3)
+    fill = Image.eval(g, lambda p: p)
+    pal = strip.resize((256, 1))
+    metal = Image.new("RGB", (S, S))
+    lut = [strip.getpixel((0, i)) for i in range(256)]
+    r = g.point([v[0] for v in lut])
+    gg = g.point([v[1] for v in lut])
+    b = g.point([v[2] for v in lut])
+    metal = Image.merge("RGB", (r, gg, b)).convert("RGBA")
+    metal.putalpha(mask)
+    img = _over(img, metal)
+    hi = ImageChops.subtract(mask, ImageChops.offset(mask, bevel, bevel)).filter(ImageFilter.GaussianBlur(0.8))
+    lo = ImageChops.subtract(mask, ImageChops.offset(mask, -bevel, -bevel)).filter(ImageFilter.GaussianBlur(0.8))
+    h = Image.new("RGBA", (S, S), (255, 255, 255, 255))
+    h.putalpha(hi.point(lambda p: int(p * 0.85)))
+    l = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+    l.putalpha(lo.point(lambda p: int(p * 0.7)))
+    return _over(_over(img, h), l)
+
+
+def _gear_mask(cx, cy, R, teeth, rot, holes=5, hub=0.2):
+    ss = Image.new("L", (S * 2, S * 2), 0)
+    d = ImageDraw.Draw(ss)
+    pts = []
+    n = teeth
+    for i in range(n):
+        a = rot + i * 360 / n
+        w = 360 / n
+        for off, rr in ((0.0, R * 0.86), (0.12, R * 0.86), (0.2, R), (0.5, R), (0.58, R * 0.86)):
+            pts.append(tuple(v * 2 for v in _polar(cx, cy, rr, a + off * w)))
+    d.polygon(pts, fill=255)
+    d.ellipse(((cx - R * 0.66) * 2, (cy - R * 0.66) * 2, (cx + R * 0.66) * 2, (cy + R * 0.66) * 2), fill=0)         # rim ring
+    d.ellipse(((cx - R * 0.7) * 2, (cy - R * 0.7) * 2, (cx + R * 0.7) * 2, (cy + R * 0.7) * 2), fill=255)
+    d.ellipse(((cx - R * 0.58) * 2, (cy - R * 0.58) * 2, (cx + R * 0.58) * 2, (cy + R * 0.58) * 2), fill=0)
+    for k in range(holes):                                                                                           # spokes
+        a = rot * 1.7 + k * 360 / holes
+        x1, y1 = _polar(cx, cy, R * hub, a)
+        x2, y2 = _polar(cx, cy, R * 0.66, a)
+        d.line([(x1 * 2, y1 * 2), (x2 * 2, y2 * 2)], fill=255, width=int(R * 0.12 * 2))
+    d.ellipse(((cx - R * hub) * 2, (cy - R * hub) * 2, (cx + R * hub) * 2, (cy + R * hub) * 2), fill=255)
+    d.ellipse(((cx - R * hub * 0.45) * 2, (cy - R * hub * 0.45) * 2, (cx + R * hub * 0.45) * 2, (cy + R * hub * 0.45) * 2), fill=0)
+    return ss.resize((S, S), Image.LANCZOS)
+
+
+def _skeleton(img, c, hm, date, now):
+    """ساعت اسکلتی: real metal gears turning with the minutes, sapphire window with a minute-tick bezel."""
+    base = _dim(img, 0.82)
+    gold = _lerp(c, (255, 200, 90), 0.55)
+    gears = ((120, 130, 150, 15, now.minute * 6), (700, 110, 118, 12, -now.minute * 7.5 + 15),
+             (712, 700, 190, 18, now.minute * 4.8), (96, 706, 112, 11, -now.minute * 6.4 + 9),
+             (400, 36, 70, 9, now.minute * 9))
+    for x, y, R, t, rot in gears:
+        m = _gear_mask(x, y, R, t, rot)
+        sh = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+        sh.putalpha(m.filter(ImageFilter.GaussianBlur(9)).point(lambda p: int(p * 0.8)))
+        base = _over(base, ImageChops.offset(sh, 6, 10))
+        base = _metal_fill(base, m, gold)
+    cx = cy = S / 2
+    R = 262
+    ss = _SS()
+    ss.d.ellipse(ss.xy(cx - R - 22, cy - R - 22, cx + R + 22, cy + R + 22), fill=(0, 0, 0, 0))
+    plate = Image.new("L", (S * 2, S * 2), 0)
+    pd = ImageDraw.Draw(plate)
+    pd.ellipse(((cx - R - 20) * 2, (cy - R - 20) * 2, (cx + R + 20) * 2, (cy + R + 20) * 2), fill=255)
+    pd.ellipse(((cx - R + 14) * 2, (cy - R + 14) * 2, (cx + R - 14) * 2, (cy + R - 14) * 2), fill=0)
+    bez = plate.resize((S, S), Image.LANCZOS)
+    glass = _layer()
+    ImageDraw.Draw(glass).ellipse((cx - R + 14, cy - R + 14, cx + R - 14, cy + R - 14), fill=(6, 8, 14, 226))
+    sh2 = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+    sh2.putalpha(bez.filter(ImageFilter.GaussianBlur(10)).point(lambda p: int(p * 0.8)))
+    base = _over(base, ImageChops.offset(sh2, 6, 12))
+    base = _over(base, glass)
+    base = _metal_fill(base, bez, _lerp(c, (230, 230, 240), 0.6), light=0.7, dark=0.5, bevel=3)
+    tk = _SS()
+    for i in range(60):
+        on = i <= now.minute
+        big = i % 5 == 0
+        a, b = _polar(cx, cy, R - 30, i * 6), _polar(cx, cy, R - (58 if big else 46), i * 6)
+        tk.d.line([(a[0] * 2, a[1] * 2), (b[0] * 2, b[1] * 2)], fill=(c + (255,)) if on else (255, 255, 255, 90), width=(9 if big else 5))
+    ticks = tk.done()
+    base = _glow_from_mask(base, ticks.split()[3].point(lambda p: p if p > 200 else 0), c, 8, 1.0, 1)
+    base = _over(base, ticks)
+    f = _fit("Poppins-Bold.ttf", hm, 380, 150)
+    base = glow_text(base, hm, (cx, cy - 6), f, c, radius=16, core=(255, 255, 255), strength=1.1)
+    base = plain_text(base, date, (cx, cy + 92), _font("Poppins-Medium.ttf", 30), tint(c, 0.6) + (255,))
+    refl = _layer()                                                              # glass reflection
+    ImageDraw.Draw(refl).pieslice((cx - R + 30, cy - R + 30, cx + R - 30, cy + R - 30), 200, 262, fill=(255, 255, 255, 34))
+    base = _over(base, refl.filter(ImageFilter.GaussianBlur(3)))
+    for k in range(4):                                                           # screws
+        sx, sy = _polar(cx, cy, R + 4, 45 + 90 * k)
+        base = _metal_fill(base, _mask_text("●", (sx, sy), _font("DejaVuSansMono-Bold.ttf", 18)), (200, 200, 210), bevel=1) if False else base
+    return base
+
+
+def _radeq(img, c, hm, date, now):
+    """ایکولایزر دایره‌ای: 72 rounded bars around a glass clock, hue sweeping around the ring, reflection glow."""
+    img = _dim(img, 0.82)
+    cx = cy = S / 2
+    rnd = random.Random(now.hour * 60 + now.minute)
+    ph1, ph2 = rnd.random() * 6.28, rnd.random() * 6.28
+    n = 72
+    ss = _SS()
+    glowl = _SS()
+    for i in range(n):
+        a = i * 360 / n
+        lv = 0.5 + 0.5 * math.sin(i * 0.33 + ph1)
+        lv *= 0.55 + 0.45 * math.sin(i * 0.11 + ph2)
+        ln = 26 + 150 * abs(lv) + rnd.random() * 18
+        col = _hue(c, (i / n - 0.5) * 0.28, s=0.8, v=1)
+        p1, p2 = _polar(cx, cy, 176, a), _polar(cx, cy, 176 + ln, a)
+        ss.d.line([(p1[0] * 2, p1[1] * 2), (p2[0] * 2, p2[1] * 2)], fill=col + (255,), width=18)
+        for pp in (p1, p2):
+            ss.d.ellipse(ss.xy(pp[0] - 4.5, pp[1] - 4.5, pp[0] + 4.5, pp[1] + 4.5), fill=col + (255,))
+        q2 = _polar(cx, cy, 176 - 12 - ln * 0.28, a)                              # inner mirrored bar
+        q1 = _polar(cx, cy, 164, a)
+        glowl.d.line([(q1[0] * 2, q1[1] * 2), (q2[0] * 2, q2[1] * 2)], fill=col + (130,), width=12)
+    bars = ss.done()
+    img = _glow_from_mask(img, bars.split()[3], c, 16, 0.9, 1)
+    img = _over(img, glowl.done())
+    img = _over(img, bars)
+    disc = _layer()
+    d = ImageDraw.Draw(disc)
+    d.ellipse((cx - 146, cy - 146, cx + 146, cy + 146), fill=(8, 10, 18, 215), outline=tint(c, 0.4) + (230,), width=4)
+    img = _glow_from_mask(img, disc.split()[3], c, 10, 0.7, 1)
+    img = _over(img, disc)
+    f = _fit("Poppins-Bold.ttf", hm, 250, 100)
+    img = plain_text(img, hm, (cx, cy - 8), f, (255, 255, 255, 255))
+    img = plain_text(img, date, (cx, cy + 62), _font("Poppins-Medium.ttf", 24), tint(c, 0.6) + (255,), shadow=False)
+    refl = _layer()
+    ImageDraw.Draw(refl).pieslice((cx - 132, cy - 132, cx + 132, cy + 132), 200, 250, fill=(255, 255, 255, 30))
+    return _over(img, refl)
+
+
+def _horizon(img, c, hm, date, now):
+    """افق سیاره: planet limb with layered atmosphere, cloud bands, city lights, sun flare with anamorphic streak."""
+    img = _dim(img, 0.9, vignette=False)
+    img = _starfield(img, 170, 7 + now.hour)
+    cx, cy, R = S / 2 - 10, 1085, 650
+    atm = _layer()
+    ad = ImageDraw.Draw(atm)
+    for k, (grow, a) in enumerate(((70, 40), (38, 70), (16, 120))):
+        ad.ellipse((cx - R - grow, cy - R - grow, cx + R + grow, cy + R + grow), fill=c + (a,))
+    img = _over(img, atm.filter(ImageFilter.GaussianBlur(26)))
+    disc = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(disc).ellipse((cx - R, cy - R, cx + R, cy + R), fill=255)
+    body = _vgrad(S, S, shade(c, 0.78), (3, 4, 9)).convert("RGBA")
+    body.putalpha(disc)
+    img = _over(img, body)
+    clouds = Image.effect_noise((S, S), 70).filter(ImageFilter.GaussianBlur(16)).point(lambda p: max(0, min(255, (p - 118) * 4)))
+    clouds = clouds.resize((S, S)).transform((S, S), Image.AFFINE, (1, 0.25, 0, 0, 1, 0))
+    cl = Image.new("RGBA", (S, S), tint(c, 0.45) + (255,))
+    fade = Image.linear_gradient("L").rotate(180).resize((S, S)).point(lambda p: int(p * 0.5 if p > 120 else p * 0.1))
+    cl.putalpha(ImageChops.multiply(ImageChops.multiply(clouds, disc), fade).point(lambda p: int(p * 0.42)))
+    img = _over(img, cl)
+    rnd = random.Random(11)
+    lights = _layer()
+    ld = ImageDraw.Draw(lights)
+    for _ in range(260):
+        x, y = rnd.randint(40, S - 40), rnd.randint(int(cy - R + 150), S)
+        if (x - cx) ** 2 + (y - cy) ** 2 < (R - 6) ** 2:
+            r = rnd.choice((1, 1, 1.5, 2))
+            ld.ellipse((x - r, y - r, x + r, y + r), fill=(255, 205, 120, rnd.randint(110, 230)))
+    img = _over(_over(img, lights.filter(ImageFilter.GaussianBlur(2))), lights)
+    rim = _layer()
+    rd = ImageDraw.Draw(rim)
+    for w, a in ((12, 70), (7, 130), (3, 255)):
+        rd.arc((cx - R, cy - R, cx + R, cy + R), 238, 302, fill=tint(c, 0.75) + (a,), width=w)
+    img = _glow_from_mask(img, rim.split()[3], c, 12, 1.6, 2)
+    img = _over(img, rim)
+    fx, fy = cx + 150, cy - math.sqrt(R * R - 150 ** 2)
+    fl = _layer()
+    fd = ImageDraw.Draw(fl)
+    fd.ellipse((fx - 26, fy - 26, fx + 26, fy + 26), fill=(255, 255, 255, 255))
+    img = _glow_from_mask(img, fl.split()[3], tint(c, 0.6), 36, 2.6, 2)
+    streak = _layer()
+    ImageDraw.Draw(streak).ellipse((fx - 330, fy - 5, fx + 330, fy + 5), fill=tint(c, 0.7) + (230,))
+    img = _over(img, streak.filter(ImageFilter.GaussianBlur(4)))
+    img = _over(img, fl)
+    f = _fit("Poppins-Light.ttf", hm, 640, 250)
+    img = glow_text(img, hm, (S / 2, 220), f, c, radius=26, core=(255, 255, 255), strength=0.8)
+    return plain_text(img, date, (S / 2, 360), _font("Poppins-Medium.ttf", 36), tint(c, 0.65) + (255,))
+
+
+STYLES += [("bhole", "🕳 سیاه‌چاله"), ("skeleton", "⚙️ ساعت اسکلتی"), ("radeq", "🎚 ایکولایزر دایره‌ای"),
+           ("horizon", "🌍 افق سیاره")]
+_DRAW.update({"bhole": _bhole, "skeleton": _skeleton, "radeq": _radeq, "horizon": _horizon})
+
+
+
 def style_key(v):
     keys = [k for k, _ in STYLES]
     if isinstance(v, int) or str(v).lstrip("-").isdigit():
