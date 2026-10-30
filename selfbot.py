@@ -873,12 +873,19 @@ def _pick_color(w):
 
 
 def _pick_style(w):
-    k = norm(w)
-    for i, (key, fa) in enumerate(clockpic.STYLES):
-        if k in (key, norm(fa)):
+    """Style by key, full/partial Persian name (emoji and spaces ignored) or its number: `.ساعت_عکس طرح شیر` / `طرح 18`."""
+    canon = lambda t: re.sub(r"[\W_]+", "", utils.to_en_digits(str(t)).lower())
+    k = canon(w)
+    if not k:
+        return None
+    for key, fa in clockpic.STYLES:
+        if k in (canon(key), canon(fa)):
             return key
-    if utils.to_en_digits(w).isdigit() and 1 <= int(utils.to_en_digits(w)) <= len(clockpic.STYLES):
-        return clockpic.STYLES[int(utils.to_en_digits(w)) - 1][0]
+    if k.isdigit() and 1 <= int(k) <= len(clockpic.STYLES):
+        return clockpic.STYLES[int(k) - 1][0]
+    for key, fa in clockpic.STYLES:                      # partial name, e.g. "شیر" -> first lion & sun design
+        if len(k) >= 2 and k in canon(fa):
+            return key
     return None
 
 
@@ -915,10 +922,10 @@ async def c_clockpic(c, e, uid, arg):
         await e.edit(f"🎨 رنگ ساعت: {clockpic.COLORS[k][1]} {clockpic.COLORS[k][0]}")
         return await cpic_refresh(uid)
     if sub in ("طرح", "style", "مدل"):
-        k = _pick_style(w[1]) if len(w) > 1 else None
+        k = _pick_style(" ".join(w[1:])) if len(w) > 1 else None
         if not k:
             return await e.edit("🖼 طرح‌ها: " + " | ".join(f"{i}. {n}" for i, (_k, n) in enumerate(clockpic.STYLES, 1))
-                                + "\nمثال: `.ساعت_عکس طرح 4`")
+                                + "\nمثال: `.ساعت_عکس طرح 4` | `.ساعت_عکس طرح شیر` | `.ساعت_عکس طرح 19`")
         await db.uset(uid, "cpic_style", k)
         await e.edit(f"🖼 طرح ساعت: {dict(clockpic.STYLES)[k]}")
         return await cpic_refresh(uid)
