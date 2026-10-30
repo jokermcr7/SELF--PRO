@@ -98,6 +98,13 @@ async def init():
         CREATE TABLE IF NOT EXISTS receipts(
             id SERIAL PRIMARY KEY, user_id BIGINT NOT NULL, amount BIGINT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending', created TIMESTAMPTZ DEFAULT now());
+        ALTER TABLE receipts ADD COLUMN IF NOT EXISTS price BIGINT NOT NULL DEFAULT 0;
+        ALTER TABLE receipts ADD COLUMN IF NOT EXISTS dcode TEXT;
+        CREATE TABLE IF NOT EXISTS discounts(
+            code TEXT PRIMARY KEY, percent INT NOT NULL, max_uses INT NOT NULL,
+            used INT NOT NULL DEFAULT 0, created TIMESTAMPTZ DEFAULT now());
+        CREATE TABLE IF NOT EXISTS discount_uses(
+            code TEXT, user_id BIGINT, PRIMARY KEY(code, user_id));
         """
     )
 
@@ -470,8 +477,9 @@ async def user_full(uid):
 
 
 # ---------------- purchase receipts ----------------
-async def receipt_create(uid, amount):
-    return await pool.fetchval("INSERT INTO receipts(user_id,amount) VALUES($1,$2) RETURNING id", uid, amount)
+async def receipt_create(uid, amount, price=0, dcode=None):
+    return await pool.fetchval(
+        "INSERT INTO receipts(user_id,amount,price,dcode) VALUES($1,$2,$3,$4) RETURNING id", uid, amount, price, dcode)
 
 
 async def receipts_pending(uid) -> int:
@@ -479,9 +487,78 @@ async def receipts_pending(uid) -> int:
 
 
 async def receipt_resolve(rid, status):
-    """Atomic pending -> approved/rejected. Returns the row, or None if already handled."""
-    return await pool.fetchrow(
-        "UPDATE receipts SET status=$2 WHERE id=$1 AND status='pending' RETURNING user_id,amount", rid, status)
+    """Atomic pending -> approved/rejected. Returns the row, or None if already handled.
+    A rejected receipt gives its discount code back to the user."""
+    row = await pool.fetchrow(
+        "UPDATE receipts SET status=$2 WHERE id=$1 AND status='pending' RETURNING user_id,amount,price,dcode", rid, status)
+    if row and status == "rejected" and row["dcode"]:
+        await discount_release(row["dcode"], row["user_id"])
+    return row
+
+
+# ---------------- discount codes for buying diamonds (separate from gift codes) ----------------
+def discounted(price: int, percent: int) -> int:
+    """Price after `percent`% off, rounded UP to the next 100 toman (never below 100)."""
+    new = -(-price * (100 - percent) // 100)
+    return max(-(-new // 100) * 100, 100) if price else 0
+
+
+async def discount_create(code, percent, max_uses):
+    code = code.lower()
+    await pool.execute(
+        "INSERT INTO discounts(code,percent,max_uses) VALUES($1,$2,$3) "
+        "ON CONFLICT(code) DO UPDATE SET percent=$2, max_uses=$3, used=0", code, percent, max_uses)
+    await pool.execute("DELETE FROM discount_uses WHERE code=$1", code)
+
+
+async def discount_check(code, uid):
+    """Read-only check. Returns (percent, None) or (None, 'none'|'used'|'full')."""
+    code = (code or "").strip().lower()
+    row = await pool.fetchrow("SELECT percent,max_uses,used FROM discounts WHERE code=$1", code)
+    if not row:
+        return None, "none"
+    if await pool.fetchval("SELECT 1 FROM discount_uses WHERE code=$1 AND user_id=$2", code, uid):
+        return None, "used"
+    if row["used"] >= row["max_uses"]:
+        return None, "full"
+    return row["percent"], None
+
+
+async def discount_consume(code, uid):
+    """Atomically use one slot of the code for this user (when the receipt is sent). Same return as discount_check."""
+    code = (code or "").strip().lower()
+    async with pool.acquire() as c:
+        async with c.transaction():
+            row = await c.fetchrow("SELECT percent,max_uses,used FROM discounts WHERE code=$1 FOR UPDATE", code)
+            if not row:
+                return None, "none"
+            if await c.fetchval("SELECT 1 FROM discount_uses WHERE code=$1 AND user_id=$2", code, uid):
+                return None, "used"
+            if row["used"] >= row["max_uses"]:
+                return None, "full"
+            await c.execute("INSERT INTO discount_uses(code,user_id) VALUES($1,$2)", code, uid)
+            await c.execute("UPDATE discounts SET used=used+1 WHERE code=$1", code)
+    return row["percent"], None
+
+
+async def discount_release(code, uid):
+    """Receipt rejected: the user may use the code again."""
+    code = (code or "").lower()
+    async with pool.acquire() as c:
+        async with c.transaction():
+            gone = await c.fetchval("DELETE FROM discount_uses WHERE code=$1 AND user_id=$2 RETURNING 1", code, uid)
+            if gone:
+                await c.execute("UPDATE discounts SET used=GREATEST(used-1,0) WHERE code=$1", code)
+
+
+async def discount_list(n=8):
+    return await pool.fetch("SELECT code,percent,max_uses,used FROM discounts ORDER BY created DESC LIMIT $1", n)
+
+
+async def discount_delete(code) -> bool:
+    code = code.lower()
+    await pool.execute("DELETE FROM discount_uses WHERE code=$1", code)
+    return (await pool.execute("DELETE FROM discounts WHERE code=$1", code)).endswith("1")
 
 
 async def top(n=10):

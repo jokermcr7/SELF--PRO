@@ -21,7 +21,7 @@ from botapi import GREEN, RED, BLUE, btn, kb
 log = logging.getLogger("gameplus")
 TZ = ZoneInfo("Asia/Tehran")
 LN = "┄┄┄┄┄┄┄┄┄┄┄┄┄┄"
-BRAND = os.getenv("BRAND", "Vip MMD")
+BRAND = os.getenv("GAME_BRAND", "𝚾𝚻𝚳 𝙎𝙀𝙇𝙁")
 CH_N = 9                                                              # secret numbers 1..9 (odd => perfectly fair)
 CH_JOIN_TIMEOUT, CH_PICK_TIMEOUT = 180, 90
 
@@ -31,6 +31,11 @@ challenges: dict[int, dict] = {}
 
 def esc(s):
     return html.escape(utils.clean_name(str(s)))
+
+
+def ulink(uid, name):
+    """Clickable name: tapping it opens that user's profile."""
+    return f'<a href="tg://user?id={int(uid)}">{esc(name)}</a>' if uid else esc(name)
 
 
 def today() -> str:
@@ -61,7 +66,7 @@ def register(bot, admin_ids, H):
     def head(C):
         return (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🙈 چالش عدد مخفی</b>\n{LN}\n"
                 f"💎 ورودی هر نفر: <b>{C['bet']:,}</b> | 🏆 جایزه‌ی برنده: <b>{prize(C['bet']):,}</b> 💎 (مالیات {FEE}٪)\n"
-                f"👤 سازنده: {esc(C['p'][0][1])}\n")
+                f"👤 سازنده: {ulink(*C['p'][0])}\n")
 
     def num_markup(cid):
         rows = [[btn(str(i), f"cx:{cid}:p:{i}", BLUE) for i in range(r, r + 3)] for r in (1, 4, 7)]
@@ -114,10 +119,10 @@ def register(bot, admin_ids, H):
             wid, wname = C["p"][win]
             pz = prize(C["bet"])
             await db.add(wid, pz, "challenge_win")
-            text = (head(C) + f"\n🔓 عددهای مخفی:\n{'🏆' if win == 0 else '▫️'} {esc(n1)}: <b>{a}</b>\n"
-                    f"{'🏆' if win == 1 else '▫️'} {esc(n2)}: <b>{b}</b>\n🎯 عدد هدف: <b>{t}</b>\n"
+            text = (head(C) + f"\n🔓 عددهای مخفی:\n{'🏆' if win == 0 else '▫️'} {ulink(u1, n1)}: <b>{a}</b>\n"
+                    f"{'🏆' if win == 1 else '▫️'} {ulink(u2, n2)}: <b>{b}</b>\n🎯 عدد هدف: <b>{t}</b>\n"
                     f"<i>({how}{' | انتخاب‌های ناقص خودکار پر شد' if C.get('auto') else ''})</i>\n\n"
-                    f"🏆 برنده: <b>{esc(wname)}</b> | 💎 جایزه: <b>{pz:,}</b>")
+                    f"🏆 برنده: <b>{ulink(wid, wname)}</b>\n❌ بازنده: <b>{ulink(*C['p'][1 - win])}</b>\n💎 جایزه: <b>{pz:,}</b>")
             await botapi.edit_banner(C["chat"], C["msg"], text,
                                      kb([[btn(f"🔁 چالش جدید ({C['bet']:,} 💎)", f"cx:0:n:{C['bet']}", GREEN)]]))
         except Exception:                                              # noqa: BLE001
@@ -195,7 +200,7 @@ def register(bot, admin_ids, H):
                 C["task"] = asyncio.create_task(expire(cid, CH_PICK_TIMEOUT))
                 await e.answer("✅ پیوستی")
                 return await botapi.edit_banner(
-                    C["chat"], C["msg"], head(C) + f"👥 حریف: {esc(name)}\n\n🙈 حالا هر دو نفر یه عدد مخفی بزنید "
+                    C["chat"], C["msg"], head(C) + f"👥 حریف: {ulink(uid, name)}\n\n🙈 حالا هر دو نفر یه عدد مخفی بزنید "
                     f"(تا {CH_PICK_TIMEOUT} ثانیه)؛ انتخابت فقط برای خودت نمایش داده میشه.", num_markup(cid))
             if act == "p":
                 if C["state"] != "pick" or uid not in ids:
@@ -208,7 +213,7 @@ def register(bot, admin_ids, H):
                     C["state"] = "run"
                     C["task"].cancel()
                     return await run(cid)
-                return await botapi.edit_banner(C["chat"], C["msg"], head(C) + f"👥 حریف: {esc(C['p'][1][1])}\n\n"
+                return await botapi.edit_banner(C["chat"], C["msg"], head(C) + f"👥 حریف: {ulink(*C['p'][1])}\n\n"
                                                 f"🔒 یک نفر عددش رو قفل کرد؛ منتظر نفر دوم ...", num_markup(cid))
 
     return handle

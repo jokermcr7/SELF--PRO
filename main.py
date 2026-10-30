@@ -11,6 +11,7 @@ from telethon import Button, TelegramClient, errors, events, functions, types
 from telethon.sessions import StringSession
 
 import assets
+import backup
 import botapi
 import catalog
 import clockpic
@@ -39,6 +40,9 @@ CARD_OWNER = os.getenv("CARD_OWNER", "دلیر")
 BUY_MIN, BUY_MAX = int(os.getenv("BUY_MIN", "100")), 1_000_000
 buy: dict[int, dict] = {}                       # uid -> {"n": "<digits typed so far>"}
 pending: dict[int, tuple] = {}                  # uid -> ("code",) | ("receipt", amount) | ("gcode",) | ("gamount",) | ("gusers",)
+disc: dict[int, dict] = {}                      # admin discount-code builder: uid -> {"code", "percent", "uses"}
+dc_fail: dict[int, list] = {}                   # uid -> [wrong discount-code tries, first-try time] (anti brute force)
+bk_busy = False
 gift: dict[int, dict] = {}                      # admin gift-code builder: uid -> {"code", "amount", "uses"}
 USERS_PER_PAGE = 8
 bcast_draft: dict[int, object] = {}               # admin announcement waiting for confirmation: uid -> Message
@@ -104,7 +108,8 @@ async def menu_markup(uid):
              botapi.url_btn("پشتیبانی", f"https://t.me/{SUPPORT}", R) if SUPPORT else B("پشتیبانی", "m:sup", R)]]
     if uid in ADMINS:                                   # owner-only tools
         rows.insert(3, [B("🎟 ساخت کد هدیه", "a:gift", G), B("👥 تمامی کاربران", "a:users:0", G)])
-        rows.insert(4, [B("🔒 عضویت اجباری", "a:fj", G)])
+        rows.insert(4, [B("🔒 عضویت اجباری", "a:fj", G), B("🏷 کد تخفیف", "a:dsc", G)])
+        rows.insert(5, [B("💾 بکاپ دیتابیس", "a:bk", G)])
     last = []
     if CHANNEL:
         last.append(botapi.url_btn("چنل ما", f"https://t.me/{CHANNEL}", R))
@@ -907,10 +912,8 @@ async def cb_buykey(e):
         if n < BUY_MIN:
             return await e.answer(f"حداقل خرید {BUY_MIN} الماسه", alert=True)
         await e.answer()
-        return await e.edit(
-            invoice_text(n),
-            buttons=[[Button.inline("✅ پرداخت کردم", f"bp:{n}".encode())],
-                     [Button.inline("✏️ تغییر تعداد", b"bk:back"), Button.inline("❌ لغو", b"bk:x")]])
+        d = st.get("d")
+        return await e.edit(invoice_text(n, d), buttons=invoice_buttons(n, d))
     if x == "back":
         pass
     elif x == "b":
@@ -933,15 +936,53 @@ async def cb_buykey(e):
     await e.answer()
 
 
-def invoice_text(n):
-    return (f"🧾 **فاکتور خرید**\n\n💎 تعداد: **{n:,}** الماس\n💰 مبلغ: **{db.price_toman(n):,} تومان**\n\n"
+def invoice_text(n, d=None):
+    """d = (code, percent) when a discount code is applied."""
+    price = db.price_toman(n)
+    if d:
+        final = db.discounted(price, d[1])
+        money = (f"💰 مبلغ: ~~{price:,}~~ ➜ **{final:,} تومان**\n"
+                 f"🏷 کد تخفیف `{d[0]}`: **{d[1]}٪** تخفیف (صرفه‌جویی {price - final:,} تومان)")
+    else:
+        money = f"💰 مبلغ: **{price:,} تومان**"
+    return (f"🧾 **فاکتور خرید**\n\n💎 تعداد: **{n:,}** الماس\n{money}\n\n"
             f"💳 شماره کارت (لمس کن تا کپی بشه):\n`{CARD_NUMBER}`\n👤 به نام: **{CARD_OWNER}**\n\n"
             "⚠️ دقیقاً همین مبلغ رو کارت‌به‌کارت کن، بعدش دکمه‌ی «✅ پرداخت کردم» رو بزن.")
+
+
+def invoice_price(n, d=None):
+    price = db.price_toman(n)
+    return db.discounted(price, d[1]) if d else price
+
+
+def invoice_buttons(n, d=None):
+    return [[Button.inline("✅ پرداخت کردم", f"bp:{n}".encode())],
+            [Button.inline("❌ حذف کد تخفیف", f"bd:rm:{n}".encode())] if d
+            else [Button.inline("🏷 کد تخفیف دارم", f"bd:ask:{n}".encode())],
+            [Button.inline("✏️ تغییر تعداد", b"bk:back"), Button.inline("❌ لغو", b"bk:x")]]
 
 
 def _valid_n(x):
     n = int(x)
     return n if BUY_MIN <= n <= BUY_MAX else None
+
+
+@bot.on(events.CallbackQuery(pattern=rb"^bd:"))
+async def cb_discount(e):
+    """User side of discount codes: bd:ask:<n> (type a code) | bd:rm:<n> (remove it)."""
+    uid = e.sender_id
+    _, act, n_s = e.data.decode().split(":")
+    n = _valid_n(n_s)
+    if not n:
+        return await e.answer("مقدار نامعتبره", alert=True)
+    st = buy.setdefault(uid, {"n": str(n)})
+    if act == "rm":
+        st.pop("d", None)
+        await e.answer("کد تخفیف حذف شد")
+        return await e.edit(invoice_text(n), buttons=invoice_buttons(n))
+    pending[uid] = ("dcode", n)
+    await e.answer()
+    await bot.send_message(uid, "🏷 **کد تخفیف** رو بفرست (کد تخفیف با «کد هدیه‌ی الماس» فرق داره و فقط روی مبلغ خرید اثر می‌ذاره).\n❌ لغو: /start")
 
 
 @bot.on(events.CallbackQuery(pattern=rb"^bp:"))
@@ -950,7 +991,8 @@ async def cb_paid(e):
     if not n:
         return await e.answer("مقدار نامعتبره", alert=True)
     await e.answer()
-    await e.edit(invoice_text(n) + "\n\n✅ بعد از پرداخت، روی «🧾 ارسال رسید» بزن و **عکس رسید** رو بفرست.",
+    d = buy.get(e.sender_id, {}).get("d")
+    await e.edit(invoice_text(n, d) + "\n\n✅ بعد از پرداخت، روی «🧾 ارسال رسید» بزن و **عکس رسید** رو بفرست.",
                  buttons=[[Button.inline("🧾 ارسال رسید", f"br:{n}".encode())],
                           [Button.inline("❌ لغو", b"bk:x")]])
 
@@ -963,9 +1005,16 @@ async def cb_receipt_ask(e):
         return await e.answer("مقدار نامعتبره", alert=True)
     if await db.receipts_pending(uid) >= 3:
         return await e.answer("۳ رسید در انتظار بررسی داری؛ صبر کن ادمین بررسی کنه.", alert=True)
+    d = buy.get(uid, {}).get("d")
+    if d:                                             # make sure the code is still valid before they send the receipt
+        _, err = await db.discount_check(d[0], uid)
+        if err:
+            buy[uid].pop("d", None)
+            await e.answer("این کد تخفیف دیگه معتبر نیست؛ مبلغ کامل محاسبه میشه", alert=True)
+            return await e.edit(invoice_text(n), buttons=invoice_buttons(n))
     pending[uid] = ("receipt", n)
     await e.answer()
-    await bot.send_message(uid, f"🧾 **عکس رسید پرداخت ({db.price_toman(n):,} تومان)** رو همین‌جا بفرست.\n"
+    await bot.send_message(uid, f"🧾 **عکس رسید پرداخت ({invoice_price(n, d):,} تومان)** رو همین‌جا بفرست.\n"
                                 "(می‌تونی عکس، اسکرین‌شات یا شماره‌ی پیگیری بفرستی)\n❌ لغو: /start")
 
 
@@ -978,6 +1027,28 @@ async def on_pending(e):
             pending.pop(uid, None)       # /start cancels; other commands leave the state alone
         return
     kind = pending[uid]
+    if kind[0] == "dcode":
+        fails = dc_fail.get(uid)
+        if fails and time.time() - fails[1] < 600 and fails[0] >= 8:
+            return await e.respond("⛔ تلاش‌های اشتباه زیاد بود. ۱۰ دقیقه بعد دوباره امتحان کن (یا /start).")
+        pct, err = await db.discount_check(t, uid)
+        if err:
+            f = dc_fail.get(uid)
+            dc_fail[uid] = [(f[0] + 1) if f and time.time() - f[1] < 600 else 1, f[1] if f and time.time() - f[1] < 600 else time.time()]
+            return await e.respond({"none": "❌ همچین کد تخفیفی وجود نداره. دوباره بفرست یا /start:",
+                                    "used": "⚠️ این کد تخفیف رو قبلاً استفاده کردی.",
+                                    "full": "⌛ ظرفیت این کد تخفیف تموم شده."}[err])
+        pending.pop(uid, None)
+        dc_fail.pop(uid, None)
+        n = kind[1]
+        st = buy.setdefault(uid, {"n": str(n)})
+        st["d"] = (t.strip().lower(), pct)
+        return await e.respond("✅ کد تخفیف اعمال شد!\n\n" + invoice_text(n, st["d"]), buttons=invoice_buttons(n, st["d"]))
+    if kind[0] in ("dccode", "dcpct", "dcuses"):
+        if uid not in ADMINS:
+            pending.pop(uid, None)
+            return
+        return await disc_input(e, uid, kind[0], t)
     if kind[0] in ("gcode", "gamount", "gusers"):
         if uid not in ADMINS:
             pending.pop(uid, None)
@@ -1061,10 +1132,19 @@ async def on_pending(e):
         if not (e.photo or t or e.document):
             return
         pending.pop(uid)
-        rid = await db.receipt_create(uid, kind[1])
+        d = buy.pop(uid, {}).get("d")
+        price, dcode, warn = invoice_price(kind[1], d), None, ""
+        if d:
+            _, err = await db.discount_consume(d[0], uid)
+            if err:
+                warn = f"\n⚠️ کد تخفیف `{d[0]}` هنگام ارسال رسید دیگه ظرفیت/اعتبار نداشت (مبلغ با تخفیف حساب شده؛ خودت تصمیم بگیر)."
+            else:
+                dcode = d[0]
+        rid = await db.receipt_create(uid, kind[1], price, dcode)
         who = await e.get_sender()
+        off = f"\n🏷 کد تخفیف: `{dcode}` ({d[1]}٪)" if dcode else ""
         head = (f"🧾 **رسید جدید #{rid}**\n👤 {utils.clean_name(getattr(who, 'first_name', ''))} (`{uid}`)\n"
-                f"💎 {kind[1]:,} الماس — 💰 {db.price_toman(kind[1]):,} تومان\n"
+                f"💎 {kind[1]:,} الماس — 💰 {price:,} تومان{off}{warn}\n"
                 f"💳 کارت: {CARD_NUMBER} ({CARD_OWNER})\nرسید رو چک کن و تایید یا رد کن 👇")
         sent = 0
         for a in ADMINS:
@@ -1087,13 +1167,13 @@ async def cb_receipt(e):
         return await e.answer("این رسید قبلاً بررسی شده", alert=True)
     if act == "ok":
         bal = await db.add(row["user_id"], row["amount"], "purchase")
-        await e.edit(f"✅ رسید #{rid} تایید شد: {row['amount']:,} 💎 → `{row['user_id']}`", buttons=None)
+        await e.edit(f"✅ رسید #{rid} تایید شد: {row['amount']:,} 💎 → `{row['user_id']}` ({row['price']:,} تومان)", buttons=None)
         try:
             await bot.send_message(row["user_id"], f"✅ پرداختت تایید شد! +{row['amount']:,} 💎\n💎 موجودی: {db.fmt(bal)}")
         except Exception:
             pass
     else:
-        await e.edit(f"❌ رسید #{rid} رد شد.", buttons=None)
+        await e.edit(f"❌ رسید #{rid} رد شد." + (" (کد تخفیفش به کاربر برگشت)" if row["dcode"] else ""), buttons=None)
         try:
             await bot.send_message(row["user_id"], "❌ رسیدت تایید نشد. اگه اشتباهی شده به پشتیبانی پیام بده.")
         except Exception:
@@ -1300,6 +1380,81 @@ async def codes_view():
     return text, rows
 
 
+def disc_view(uid):
+    g = disc.setdefault(uid, {})
+    code = f"<code>{esc(g['code'])}</code>" if g.get("code") else "— تنظیم نشده"
+    pct = f"<b>{g['percent']}٪</b>" if g.get("percent") else "— تنظیم نشده"
+    uses = f"<b>{g['uses']:,}</b> نفر" if g.get("uses") else "— تنظیم نشده"
+    ready = all(g.get(k) for k in ("code", "percent", "uses"))
+    text = ("<blockquote>🏷 ساخت کد تخفیف خرید | فقط مدیر</blockquote>\n"
+            f"🔤 کد: {code}\n📉 درصد تخفیف: {pct}\n👥 تعداد کاربران مجاز: {uses}\n\n"
+            "کاربر موقع خرید الماس (صفحه‌ی فاکتور) دکمه‌ی «🏷 کد تخفیف دارم» رو می‌زنه و کد رو می‌فرسته؛ مبلغ کارت‌به‌کارت "
+            "به‌اندازه‌ی درصد کم میشه. هر نفر یک‌بار می‌تونه از هر کد استفاده کنه. این کد با «کد هدیه‌ی الماس» فرق داره.")
+    rows = [[B("🔤 تنظیم کد", "a:dsc_c", G)],
+            [B("📉 درصد تخفیف", "a:dsc_p", G), B("👥 تعداد کاربر", "a:dsc_u", G)],
+            [B("✅ ساخت کد" if ready else "✅ ساخت کد (ناقصه)", "a:dsc_mk", G if ready else R)],
+            [B("📋 لیست کدها", "a:dsc_l", R), B("🧹 پاک کردن فرم", "a:dsc_x", R)],
+            [B("بازگشت", "m:menu", R)]]
+    return text, rows
+
+
+async def disc_input(e, uid, kind, t):
+    g = disc.setdefault(uid, {})
+    t = utils.to_en_digits(t).strip().rstrip("%٪")
+    if kind == "dccode":
+        if not re.fullmatch(r"[\w\-]{3,32}", t):
+            return await e.respond("⚠️ کد باید ۳ تا ۳۲ حرف/عدد باشه (بدون فاصله). دوباره بفرست:")
+        g["code"] = t.lower()
+    elif kind == "dcpct":
+        if not t.isdigit() or not 1 <= int(t) <= 90:
+            return await e.respond("⚠️ یه عدد بین ۱ تا ۹۰ بفرست (درصد تخفیف):")
+        g["percent"] = int(t)
+    else:
+        if not t.isdigit() or not 1 <= int(t) <= 1_000_000:
+            return await e.respond("⚠️ یه عدد بین ۱ تا ۱,۰۰۰,۰۰۰ بفرست:")
+        g["uses"] = int(t)
+    pending.pop(uid, None)
+    text, rows = disc_view(uid)
+    await botapi.send_text(uid, text, {"inline_keyboard": rows})
+
+
+async def disc_codes_view():
+    rows_db = await db.discount_list(8)
+    lines = [f"• <code>{esc(r['code'])}</code> — {r['percent']}٪ — {r['used']}/{r['max_uses']} نفر" for r in rows_db]
+    text = "<blockquote>📋 کدهای تخفیف</blockquote>\n" + ("\n".join(lines) or "هنوز کدی نساختی.")
+    rows = [[B(f"🗑 {r['code']}", f"a:dsc_d:{r['code']}"[:60], R)] for r in rows_db]
+    rows.append([B("بازگشت", "a:dsc", G)])
+    return text, rows
+
+
+@bot.on(events.NewMessage(pattern=r"^/disc\s+([\w\-]{3,32})\s+(\d{1,2})\s+(\d+)$", func=is_admin))
+async def adm_disc(e):
+    code, pct, uses = e.pattern_match.group(1), int(e.pattern_match.group(2)), int(e.pattern_match.group(3))
+    if not 1 <= pct <= 90 or uses < 1:
+        return await e.respond("⚠️ درصد باید ۱ تا ۹۰ و تعداد حداقل ۱ باشه. مثال: `/disc eid 20 50`")
+    await db.discount_create(code, pct, uses)
+    await e.respond(f"🏷 کد تخفیف `{code.lower()}` ساخته شد: {pct}٪ برای {uses} نفر.")
+
+
+async def do_backup(reason="manual"):
+    global bk_busy
+    if bk_busy:
+        return None
+    bk_busy = True
+    try:
+        return await backup.run_backup(bot, ADMINS, reason)
+    finally:
+        bk_busy = False
+
+
+@bot.on(events.NewMessage(pattern=r"^/backup(@\w+)?$", func=is_admin))
+async def adm_backup(e):
+    m = await e.respond("⏳ در حال ساخت بکاپ دیتابیس...")
+    r = await do_backup("manual")
+    await m.edit("⚠️ یه بکاپ دیگه در حال انجامه." if r is None else
+                 (f"✅ بکاپ برای {r[0]} مدیر ارسال شد ({backup._size(r[1])})." if r[0] else "⚠️ ارسال بکاپ ناموفق بود؛ لاگ سرور رو ببین."))
+
+
 BC_HEAD = "📢 **پیام از مدیر**\n\n"
 
 
@@ -1381,6 +1536,64 @@ async def cb_admin(e):
         await e.answer("🚀 ارسال شروع شد")
         return await edit_view(e, f"🚀 <b>ارسال برای {len(targets):,} کاربر شروع شد.</b>\nبعد از تموم شدن گزارش می‌گیری.",
                                [[B("بازگشت", "m:mg", R)]])
+    if act == "dsc":
+        pending.pop(uid, None)
+        await e.answer()
+        return await edit_view(e, *disc_view(uid))
+    if act in ("dsc_c", "dsc_p", "dsc_u"):
+        kind, ask = {"dsc_c": ("dccode", "🔤 کد تخفیف دلخواهت رو بفرست (مثلاً `eid1405` — حرف و عدد، ۳ تا ۳۲ کاراکتر):"),
+                     "dsc_p": ("dcpct", "📉 چند درصد تخفیف؟ یه عدد بین ۱ تا ۹۰ بفرست:"),
+                     "dsc_u": ("dcuses", "👥 چند کاربر می‌تونن از این کد استفاده کنن؟ یه عدد بفرست:")}[act]
+        pending[uid] = (kind,)
+        await e.answer()
+        return await bot.send_message(uid, ask)
+    if act == "dsc_x":
+        disc[uid] = {}
+        await e.answer("پاک شد")
+        return await edit_view(e, *disc_view(uid))
+    if act == "dsc_mk":
+        g = disc.get(uid, {})
+        if not all(g.get(k) for k in ("code", "percent", "uses")):
+            return await e.answer("اول کد، درصد و تعداد کاربر رو تنظیم کن", alert=True)
+        await db.discount_create(g["code"], g["percent"], g["uses"])
+        disc[uid] = {}
+        await e.answer("✅ کد ساخته شد", alert=True)
+        return await edit_view(
+            e, f"✅ <b>کد تخفیف ساخته شد</b>\n\n🔤 کد: <code>{esc(g['code'])}</code>\n📉 تخفیف: {g['percent']}٪\n"
+               f"👥 ظرفیت: {g['uses']:,} نفر\n\nکاربر موقع خرید الماس روی «🏷 کد تخفیف دارم» می‌زنه و این کد رو می‌فرسته.",
+            [[B("🏷 ساخت کد دیگه", "a:dsc", G), B("📋 لیست کدها", "a:dsc_l", R)], [B("بازگشت", "m:menu", R)]])
+    if act == "dsc_l":
+        await e.answer()
+        return await edit_view(e, *await disc_codes_view())
+    if act == "dsc_d":
+        ok = await db.discount_delete(":".join(parts[2:]))
+        await e.answer("🗑 حذف شد" if ok else "پیدا نشد")
+        return await edit_view(e, *await disc_codes_view())
+    if act == "bk":
+        await e.answer()
+        on = await backup.enabled()
+        return await edit_view(e, await backup.status_text(), [
+            [B("📥 بکاپ همین الان", "a:bkn", G)],
+            [B("🔴 خاموش کردن بکاپ شبانه" if on else "🟢 روشن کردن بکاپ شبانه", "a:bkt", R if on else G)],
+            [B("بازگشت", "m:menu", R)]])
+    if act == "bkt":
+        new = await backup.toggle()
+        await e.answer("🟢 روشن شد" if new else "🔴 خاموش شد")
+        return await edit_view(e, await backup.status_text(), [
+            [B("📥 بکاپ همین الان", "a:bkn", G)],
+            [B("🔴 خاموش کردن بکاپ شبانه" if new else "🟢 روشن کردن بکاپ شبانه", "a:bkt", R if new else G)],
+            [B("بازگشت", "m:menu", R)]])
+    if act == "bkn":
+        if bk_busy:
+            return await e.answer("یه بکاپ در حال انجامه؛ کمی صبر کن", alert=True)
+        await e.answer("⏳ در حال ساخت بکاپ... (چند ثانیه)", alert=True)
+        r = await do_backup("manual")
+        note = ("✅ بکاپ برای مدیرها ارسال شد." if r and r[0] else "⚠️ ارسال بکاپ ناموفق بود؛ لاگ سرور رو ببین.")
+        on = await backup.enabled()
+        return await edit_view(e, note + "\n\n" + await backup.status_text(), [
+            [B("📥 بکاپ همین الان", "a:bkn", G)],
+            [B("🔴 خاموش کردن بکاپ شبانه" if on else "🟢 روشن کردن بکاپ شبانه", "a:bkt", R if on else G)],
+            [B("بازگشت", "m:menu", R)]])
     if act == "gift":
         pending.pop(uid, None)
         await e.answer()
@@ -1653,6 +1866,7 @@ async def main():
             log.exception("failed to start self for %s", uid)
     asyncio.create_task(billing_loop())
     asyncio.create_task(fj_loop())
+    asyncio.create_task(backup.loop(bot, ADMINS))
     log.info("running: %s selfs", len(selfbot.clients))
     await bot.run_until_disconnected()
 

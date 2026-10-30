@@ -39,7 +39,7 @@ MIN_BET = 20                                               # minimum entry for E
 HARD_CAP = 10 ** 9                                         # "unlimited" (only keeps numbers inside BIGINT range)
 MAX_BET = int(os.getenv("MAX_GAME_BET", "0")) or HARD_CAP   # 0 / unset = no limit
 FEE = int(os.getenv("GAME_FEE_PERCENT", "5"))              # PvP tax: pot 88 -> tax 4 -> prize 84
-BRAND = os.getenv("BRAND", "Vip MMD")
+BRAND = os.getenv("GAME_BRAND", "𝚾𝚻𝚳 𝙎𝙀𝙇𝙁")      # shown as «• — BRAND — •» on top of every game message
 _rng = random.SystemRandom()          # OS cryptographic randomness (os.urandom)
 BOT_WIN_PERCENT = min(max(float(os.getenv("BOT_WIN_PERCENT", "50")), 0.0), 100.0)   # «بازی 20» with the bot: player win chance
 LOBBY_TIMEOUT = 180
@@ -83,6 +83,13 @@ def name_of(u):
 
 def esc(n):
     return html.escape(utils.clean_name(n))
+
+
+def ulink(uid, name):
+    """Clickable name: tapping it opens that user's profile. The bot (uid 0) is plain text."""
+    if not uid:
+        return html.escape(utils.clean_name(name))
+    return f'<a href="tg://user?id={int(uid)}">{esc(name)}</a>'
 
 
 def limit_txt(hi):
@@ -208,7 +215,7 @@ def register(bot, admin_ids):
 
     def bet_head(P):
         return (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>• {GAME_TITLE[P['game']]}</b>\n{LN}\n"
-                f"👤 بازیکن: {esc(P['name'])}\n💎 مبلغ ورودی: <b>{P['bet']:,} الماس</b>\n{LN}\n")
+                f"👤 سازنده: {ulink(P['owner'], P['name'])}\n💎 مبلغ ورودی: <b>{P['bet']:,} الماس</b>\n{LN}\n")
 
     def pot_of(L):
         return L["bet"] * L["kind"]
@@ -358,11 +365,11 @@ def register(bot, admin_ids):
 
     # ================================================================ PvP lobbies (coin vs user, casino 2 players)
     def lobby_text(L, note=None):
-        creator = L["players"][0][1]
+        cuid, creator = L["players"][0]
         head = f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n"
         if L["type"] == "duel":
-            names = "، ".join(esc(n) for _, n in L["players"])
-            t = (head + f"<b>• بازی جدید 🎲</b>\n👤 سازنده:\n{esc(creator)}\n\n👥 تعداد بازیکنان:\n{L['kind']} 🇮🇷\n\n"
+            names = "، ".join(ulink(u, n) for u, n in L["players"][1:])
+            t = (head + f"<b>• بازی جدید 🎲</b>\n👤 سازنده:\n{ulink(cuid, creator)}\n\n👥 تعداد بازیکنان:\n{L['kind']} 🇮🇷\n\n"
                  f"💎 مقدار:\n{L['bet']:,} 💎\n\n🏆 جایزه برنده:\n{prize_of(L):,} 💎\n\n➖ مالیات:\n{tax_of(L):,} 💎\n")
             if len(L["players"]) > 1:
                 t += f"\n🙋 پیوسته‌ها: {names}\n"
@@ -370,10 +377,10 @@ def register(bot, admin_ids):
         if L["type"] == "coin":
             mine = "شیر 🦁" if L["side"] == "h" else "خط ✍️"
             other = "خط ✍️" if L["side"] == "h" else "شیر 🦁"
-            t = (head + f"<b>• شیر یا خط 🪙</b>\n👤 سازنده: {esc(creator)} ← <b>{mine}</b>\n"
+            t = (head + f"<b>• شیر یا خط 🪙</b>\n👤 سازنده: {ulink(cuid, creator)} ← <b>{mine}</b>\n"
                  f"🆚 حریف: <b>{other}</b> رو می‌گیره\n")
         else:
-            t = (head + f"<b>• کازینو دونفره 🎰</b>\n👤 سازنده: {esc(creator)}\n"
+            t = (head + f"<b>• کازینو دونفره 🎰</b>\n👤 سازنده: {ulink(cuid, creator)}\n"
                  "هر دو یه بار می‌چرخونن؛ نتیجه‌ی بهتر می‌بره.\n")
         t += (f"💎 مبلغ ورودی: <b>{L['bet']:,}</b>\n🏆 جایزه‌ی برنده: <b>{prize_pvp(L['bet']):,}</b> 💎 | "
               f"➖ مالیات: {tax_pvp(L['bet']):,}\n")
@@ -460,7 +467,7 @@ def register(bot, admin_ids):
                 order = list(range(len(players)))
                 for _rnd in range(4):
                     live = lobby_text(L, "")
-                    lines = "\n".join(f"🍀 {esc(players[k][1])}: " + (" ← ".join(map(str, nums[k])) or "—") for k in range(len(players)))
+                    lines = "\n".join(f"🍀 {ulink(*players[k])}: " + (" ← ".join(map(str, nums[k])) or "—") for k in range(len(players)))
                     await edit_lobby(L, f"{live}\n\n{lines}\n\n🎲 قرعه‌کشی ...", kb([]))
                     vals = await rnd_ints(len(order), 1, 1000)
                     await asyncio.sleep(1.5)
@@ -477,10 +484,12 @@ def register(bot, admin_ids):
             prize = prize_of(L)
             if wid:
                 await db.add(wid, prize, "game_win")
-            lines = "\n".join(f"{'🏆' if k == win else '▫️'} {esc(players[k][1])}: " + " ← ".join(map(str, nums[k]))
+            lines = "\n".join(f"{'🏆' if k == win else '▫️'} {ulink(*players[k])}: " + " ← ".join(map(str, nums[k]))
                               for k in range(len(players)))
-            text = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🍀 شرط تمام شد</b>\n\n{lines}\n\n"
-                    f"🏆 برنده: <b>{esc(wname)}</b>\n💎 جایزه: <b>{prize:,}</b> | ➖ مالیات: {tax_of(L):,}"
+            losers = "، ".join(ulink(*p) for k, p in enumerate(players) if k != win)
+            text = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🍀 شرط تمام شد</b>\n👤 سازنده: {ulink(*players[0])}\n\n{lines}\n\n"
+                    f"🏆 برنده: <b>{ulink(wid, wname)}</b>\n"
+                    f"❌ بازنده: <b>{losers}</b>\n💎 جایزه: <b>{prize:,}</b> | ➖ مالیات: {tax_of(L):,}"
                     )
             await edit_lobby(L, text, kb([[btn(f"🔁 بازی جدید ({L['bet']} 💎)", f"gr:duel:{L['bet']}:{L['kind']}", GREEN)]]))
         except Exception:
@@ -505,9 +514,10 @@ def register(bot, admin_ids):
             prize = prize_pvp(L["bet"])
             await db.add(wid, prize, "coin_win")
             nm = lambda x: "شیر 🦁" if x == "h" else "خط ✍️"
-            text = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🪙 نتیجه‌ی شیر یا خط</b>\n\n"
-                    f"▫️ {esc(cname)}: {nm(L['side'])}\n▫️ {esc(jname)}: {nm('t' if L['side'] == 'h' else 'h')}\n\n"
-                    f"🪙 آمد: <b>{nm(res)}</b>\n🏆 برنده: <b>{esc(wname)}</b>\n"
+            text = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🪙 نتیجه‌ی شیر یا خط</b>\n👤 سازنده: {ulink(cid, cname)}\n\n"
+                    f"▫️ {ulink(cid, cname)}: {nm(L['side'])}\n▫️ {ulink(jid, jname)}: {nm('t' if L['side'] == 'h' else 'h')}\n\n"
+                    f"🪙 آمد: <b>{nm(res)}</b>\n🏆 برنده: <b>{ulink(wid, wname)}</b>\n"
+                    f"❌ بازنده: <b>{ulink(*((jid, jname) if wid == cid else (cid, cname)))}</b>\n"
                     f"💎 جایزه: <b>{prize:,}</b> | ➖ مالیات: {tax_pvp(L['bet']):,}")
             await edit_lobby(L, text, kb([[btn(f"🔁 بازی جدید ({L['bet']:,} 💎)", f"gr:coin:{L['bet']}:2", GREEN)]]))
         except Exception:
@@ -529,15 +539,15 @@ def register(bot, admin_ids):
             for _rnd in range(4):
                 res = []
                 for uid_, nm in players:
-                    await edit_lobby(L, lobby_text(L, f"\n⏳ نوبت <b>{esc(nm)}</b> ..."), kb([]))
+                    await edit_lobby(L, lobby_text(L, f"\n⏳ نوبت <b>{ulink(uid_, nm)}</b> ..."), kb([]))
                     v = await roll(L["chat"], "🎰", L["msg"], 4.4)
                     res.append((nm,) + slot_eval(v))
                 if res[0][4] != res[1][4]:
                     winner = 0 if res[0][4] > res[1][4] else 1
                     break
-            lines = "\n".join(f"{'🏆' if winner == i else '▫️'} {esc(nm)}: {reels_txt(r)} — {label}"
+            lines = "\n".join(f"{'🏆' if winner == i else '▫️'} {ulink(players[i][0], nm)}: {reels_txt(r)} — {label}"
                               for i, (nm, r, _m, label, _rk) in enumerate(res))
-            head = f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎰 نتیجه‌ی کازینو دونفره</b>\n💎 ورودی: {L['bet']:,}\n\n{lines}\n\n"
+            head = f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎰 نتیجه‌ی کازینو دونفره</b>\n👤 سازنده: {ulink(*players[0])}\n💎 ورودی: {L['bet']:,}\n\n{lines}\n\n"
             if winner is None:
                 for u, _ in players:
                     if u:
@@ -546,7 +556,7 @@ def register(bot, admin_ids):
             else:
                 prize = prize_pvp(L["bet"])
                 await db.add(players[winner][0], prize, "casino_win")
-                text = head + f"🏆 برنده: <b>{esc(players[winner][1])}</b>\n💎 جایزه: <b>{prize:,}</b> | ➖ مالیات: {tax_pvp(L['bet']):,}"
+                text = head + f"🏆 برنده: <b>{ulink(*players[winner])}</b>\n❌ بازنده: <b>{ulink(*players[1 - winner])}</b>\n💎 جایزه: <b>{prize:,}</b> | ➖ مالیات: {tax_pvp(L['bet']):,}"
             await edit_lobby(L, text, kb([[btn(f"🔁 میز جدید ({L['bet']:,} 💎)", f"gr:casino:{L['bet']}:2", GREEN)]]))
         except Exception:
             log.exception("casino pvp failed, refunding")
@@ -570,7 +580,7 @@ def register(bot, admin_ids):
 
     async def play_solo(P):
         g, bet, uid = P["game"], P["bet"], P["owner"]
-        head = f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>• {GAME_TITLE[g]}</b>\n👤 {esc(P['name'])} | 💎 ورودی: {bet:,}\n\n"
+        head = f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>• {GAME_TITLE[g]}</b>\n👤 سازنده: {ulink(uid, P['name'])} | 💎 ورودی: {bet:,}\n\n"
         if g == "dice" and P["mode"] == "exact" and not P["pick"]:
             return "🎯 اول عددی که حدس می‌زنی رو انتخاب کن"
         if g == "roulette" and P["mode"] == "exact" and not P["pick"]:
