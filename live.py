@@ -109,7 +109,7 @@ def _ydl(opts=None):
 
 
 # YouTube clients that return HLS manifests for live streams without needing JS challenges, tried in order
-_CLIENTS = (["web_safari"], ["tv"], ["android_vr"], ["mweb"], ["ios"], None)
+_CLIENTS = (["ios"], ["web_safari"], ["tv"], ["mweb"], ["android_vr"], None)
 
 
 def _find_live_url(query, words):
@@ -163,43 +163,6 @@ def pick_media(info):
     return None, hdr
 
 
-def _probe(media, headers):
-    """Download the first bytes of the real media (HLS: newest segment) with the same headers ffmpeg will use.
-    Raises on 403/404 so a client whose links are blocked (PO token / IP) is skipped before ffmpeg starts."""
-    import urllib.request
-    from urllib.parse import urljoin
-    hd = {k: v for k, v in (headers or {}).items() if k.lower() in ("user-agent", "referer", "origin", "cookie", "accept-language")}
-    hd.setdefault("User-Agent", "Mozilla/5.0")
-
-    def get(u, n=400000):
-        with urllib.request.urlopen(urllib.request.Request(u, headers=hd), timeout=15) as r:
-            return r.read(n)
-    for m in (media if isinstance(media, (list, tuple)) else [media]):
-        if not m.startswith("http"):
-            continue
-        if ".m3u8" not in m and "manifest" not in m:
-            get(m, 2048)
-            continue
-        txt = get(m).decode("utf-8", "ignore")
-        for _ in range(2):                                       # master -> media playlist
-            if "#EXT-X-STREAM-INF" not in txt:
-                break
-            lines = txt.splitlines()
-            var = None
-            for i, ln in enumerate(lines):
-                if ln.startswith("#EXT-X-STREAM-INF"):
-                    var = next((x for x in lines[i + 1:] if x and not x.startswith("#")), None)
-                    break
-            if not var:
-                break
-            m = urljoin(m, var)
-            txt = get(m).decode("utf-8", "ignore")
-        segs = [x for x in txt.splitlines() if x and not x.startswith("#")]
-        if not segs:
-            raise RuntimeError("playlist بدون سگمنت")
-        get(urljoin(m, segs[-1]), 2048)
-
-
 def _extract(page):
     errs = []
     for strict in (True, False):                                 # strict = real YouTube error text; then the tolerant pass
@@ -214,11 +177,6 @@ def _extract(page):
                     info = (info.get("entries") or [None])[0] or {}
                 media, hdr = pick_media(info or {})
                 if media:
-                    try:
-                        _probe(media, hdr)
-                    except Exception as pe:                      # noqa: BLE001
-                        errs.append(f"{(cl or ['default'])[0]}: لینک بلاک ({str(pe)[:60]})")
-                        continue
                     return media, hdr, (info.get("title") or "")
                 errs.append(f"{(cl or ['default'])[0]}: بدون فرمت")
             except Exception as ex:                              # noqa: BLE001
@@ -261,7 +219,7 @@ def build_cmd(ff, media, headers, rtmp, quality, force_encode=False):
             if hdr:
                 cmd += ["-headers", hdr]
             cmd += ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
-        cmd += ([] if re.search(r"m3u8|manifest|^rtmps?://", m, re.I) else ["-re"]) + ["-i", m]
+        cmd += ["-re", "-i", m]
     cmd += ["-map", "0:v:0?", "-map", "1:a:0?" if len(medias) > 1 else "0:a:0?"]
     q = QUALITY.get(quality) if quality else None
     if q or force_encode:
@@ -313,22 +271,7 @@ async def _supervisor(c, uid, st):
                         k, _, v = t.partition("=")
                         st["prog"][k] = v
 
-            async def watchdog():
-                last, since = -1, time.time()
-                while proc.returncode is None:
-                    await asyncio.sleep(5)
-                    cur = _sent_bytes(st)
-                    if cur != last:
-                        last, since = cur, time.time()
-                    elif time.time() - since > 45:               # nothing sent for 45 s (403 / dead link) -> restart with a fresh link
-                        st["log"].append("بدون خروجی ۴۵ ثانیه؛ ریستارت با لینک تازه")
-                        try:
-                            proc.terminate()
-                        except ProcessLookupError:
-                            pass
-                        return
-
-            rt = [asyncio.create_task(read_err()), asyncio.create_task(read_prog()), asyncio.create_task(watchdog())]
+            rt = [asyncio.create_task(read_err()), asyncio.create_task(read_prog())]
             await proc.wait()
             await asyncio.gather(*rt, return_exceptions=True)
             err = " | ".join(st["log"]).encode()
@@ -340,11 +283,8 @@ async def _supervisor(c, uid, st):
                 fails += 3                                              # segfault: retrying will not help
             if ran < 30:
                 fails += 1
-                txt = " ".join(st["log"])
-                if (not force and not st["encode"] and proc.returncode != -11
-                        and re.search(r"codec|not supported|unsupported|header|invalid data|flv", txt, re.I)
-                        and not re.search(r"403|forbidden|server returned|404", txt, re.I)):
-                    force = True                                      # copy failed because of the codec -> re-encode
+                if not force and not st["encode"] and proc.returncode != -11:
+                    force = True                                      # copy failed fast -> probably not H.264: re-encode
             else:
                 fails = 0
             if fails >= 6:
