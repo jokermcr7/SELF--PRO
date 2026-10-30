@@ -27,6 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 import db
 import forcejoin
 import extras
+import live
 import utils
 
 log = logging.getLogger("selfbot")
@@ -1813,6 +1814,7 @@ FA_LONG = {
     "دعوت_دوستان": "invite", "جدول_برترین": "top", "موجودی_الماس": "bal", "روشن_خاموش_سلف": "power",
 }
 extras.install(COMMANDS, FA, norm)
+live.install(COMMANDS, FA)
 ALIAS = {norm(k): v for k, v in {**FA, **FA_LONG}.items()}
 
 
@@ -2105,6 +2107,10 @@ async def stop_user(uid: int):
         t.cancel()
     _cpic_last.pop(uid, None)
     c = clients.pop(uid, None)
+    try:
+        await live.stop_all(uid, c)
+    except Exception:
+        pass
     if c:
         try:
             await c.disconnect()
