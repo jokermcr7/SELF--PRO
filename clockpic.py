@@ -2,7 +2,7 @@
 
 render(raw_base_photo_bytes | None, style, color, now) -> JPEG bytes (800x800)
 
-27 designs x 7 colors. The base photo is the user's own profile picture (or a gradient if there is none);
+29 designs x 7 colors. The base photo is the user's own profile picture (or a gradient if there is none);
 every design is drawn ON TOP of it, so the photo stays visible.
 """
 import functools
@@ -667,77 +667,6 @@ def _cr(pts, n=14, closed=False):
         out.append(P[-2])
     return out
 
-def _lion_build(size, ss=2):
-    """Heraldic walking lion facing left (raised paw + scimitar, curly mane, S-tail) as an L mask. 100x100 design grid."""
-    N = size * ss; k = N / 100.0
-    m = Image.new("L", (N, N), 0); d = ImageDraw.Draw(m)
-    P = lambda x, y: (x * k, y * k)
-    def disc(x, y, r, v=255):
-        d.ellipse((P(x - r, y - r) + P(x + r, y + r)), fill=v)
-    def tube(pts, w0, w1, n=14, v=255):
-        path = _cr(pts, n=n)
-        for i, (x, y) in enumerate(path):
-            disc(x, y, (w0 + (w1 - w0) * i / max(len(path) - 1, 1)) / 2, v)
-    def poly(pts, n=12, v=255):
-        d.polygon([P(*p) for p in _cr(pts, n=n, closed=True)], fill=v)
-    def cut(pts, w=0.7, n=10):
-        d.line([P(*p) for p in _cr(pts, n=n)], fill=0, width=max(1, int(w * k)), joint="curve")
-
-    # hind legs (far then near)
-    tube([(80, 54), (77, 66), (83, 77), (80, 91)], 10, 3.4); poly([(74, 91), (86, 91), (88, 94.5), (74, 94.5)], n=4)
-    tube([(70, 54), (66, 67), (71, 77), (67, 91)], 11.5, 3.8); poly([(60, 91), (72, 91), (74, 94.5), (60, 94.5)], n=4)
-    # standing front leg
-    tube([(45, 58), (47, 72), (44, 83), (41, 91)], 9.5, 3.6); poly([(34, 91), (46, 91), (48, 94.5), (33, 94.5)], n=4)
-    # torso
-    poly([(36, 42), (46, 40), (58, 43.5), (70, 41), (80, 42), (86, 48), (85, 58), (78, 63.5), (68, 59), (58, 57.5), (48, 63), (40, 64), (35, 55)])
-    # tail: S curve rising above the back with a flame tuft
-    tube([(84, 46), (92, 45), (96, 36), (92, 27), (87, 24)], 3.2, 2.0, n=10)
-    d.polygon([P(*p) for p in ((84.5, 27), (82, 18), (86.5, 20), (86, 10), (90.5, 17.5), (93.5, 11), (93, 21), (91, 29))], fill=255)
-    disc(87.5, 27, 2.6)
-    # raised front leg
-    tube([(45, 55), (38, 64), (28, 64), (22, 57)], 9.5, 5.2)
-    disc(21.5, 56, 5.0)
-    # --- curly mane: ring of bumps around the head centre, open on the face side
-    hx, hy = 37, 34
-    for ring, (rad, br, a0, a1, cnt) in enumerate(((13.5, 6.4, -150, 110, 13), (18.6, 4.6, -138, 92, 11))):
-        for i in range(cnt):
-            a = math.radians(a0 + (a1 - a0) * i / (cnt - 1) + (4 if ring else 0))
-            disc(hx + rad * math.cos(a), hy + 1.05 * rad * math.sin(a), br + 0.6 * math.sin(i * 2.1))
-    disc(hx, hy, 13.5)
-    # back locks trailing over the shoulder
-    for (x, y, r) in ((53, 33, 4.2), (59, 36, 3.6), (64, 40, 3.0), (49, 46, 5), (54, 49, 3.8), (45, 53, 4.6)):
-        disc(x, y, r)
-    # --- head profile (facing left)
-    poly([(28.0, 24.5), (23.5, 28.0), (19.0, 33.0), (14.5, 36.5), (12.5, 40.0), (14.5, 43.5), (19.0, 45.0), (23.0, 48.0), (29.0, 47.5), (34.0, 42.0), (34.0, 29.0)], n=10)
-    poly([(30.0, 18.0), (35.0, 15.5), (38.0, 21.0), (33.5, 24.5)], n=6)               # ear
-    # --- engraved details
-    cut([(28.5, 26), (31.5, 32), (32, 40), (29, 47)], 0.75)                  # face / mane line
-    cut([(13.5, 41), (18, 42.4), (22, 41)], 0.5)                             # mouth
-    cut([(42, 24), (44, 29), (43, 34)], 0.5)                                 # mane locks
-    cut([(46, 46), (43, 54), (45, 61)], 0.7)                                 # shoulder
-    cut([(66, 46), (71, 54), (69, 62)], 0.8)                                 # thigh
-    cut([(78, 44), (82, 51)], 0.6)
-    # --- scimitar, hilt in the raised paw
-    blade = _cr([(21.5, 53.5), (14, 42), (9, 28), (8, 15), (12, 3.5)], n=12)
-    L = len(blade); lf, rt = [], []
-    for i, (x, y) in enumerate(blade):
-        w = 1.5 * (1 - (i / (L - 1)) ** 1.9) + 0.12
-        lf.append(P(x - w, y)); rt.append(P(x + w, y))
-    d.polygon(lf + rt[::-1], fill=255)
-    d.line([P(15.5, 54), P(27.5, 57.5)], fill=255, width=int(1.8 * k))
-    disc(25.5, 60.2, 2.0)
-    return m.resize((size, size), Image.LANCZOS)
-
-
-
-LION_EYE = (24.5, 36.4)                                    # eye position on the 100x100 lion grid
-
-
-@functools.lru_cache(maxsize=8)
-def _lion_mask(size):
-    return _lion_build(size)
-
-
 def _radial(r, inner, outer, steps=16):
     """Concentric-circle gradient disc (RGBA, size 2r x 2r)."""
     im = Image.new("RGBA", (2 * r, 2 * r), (0, 0, 0, 0))
@@ -748,48 +677,6 @@ def _radial(r, inner, outer, steps=16):
         col = tuple(int(outer[j] * (1 - t) + inner[j] * t) for j in range(3))
         d.ellipse((r - rr, r - rr, r + rr, r + rr), fill=col + (255,))
     return im
-
-
-def _sun_layer(cx, cy, r, c, face=True, rays=30):
-    """Sun with alternating straight and wavy rays and a calm face (like the classic emblem). Full-size RGBA layer."""
-    ss = _SS()
-    d = ss.d
-    X = lambda p: (p[0] * 2, p[1] * 2)
-    light, mid, dark = tint(c, 0.62), tint(c, 0.12), shade(c, 0.45)
-    for i in range(rays):
-        a = i * 360 / rays
-        if i % 2 == 0:                                       # long pointed ray
-            pts = [_polar(cx, cy, r * 1.05, a - 4.2), _polar(cx, cy, r * 2.0, a), _polar(cx, cy, r * 1.05, a + 4.2)]
-            d.polygon([X(p) for p in pts], fill=light + (255,))
-            d.polygon([X(p) for p in (_polar(cx, cy, r * 1.05, a), _polar(cx, cy, r * 2.0, a), _polar(cx, cy, r * 1.05, a + 4.2))],
-                      fill=mid + (255,))
-        else:                                                # wavy flame ray
-            left, right = [], []
-            for j in range(13):
-                t = j / 12
-                rad = r * 1.05 + t * r * 0.78
-                ang = a + 3.2 * math.sin(t * math.pi * 2.0)
-                w = 4.4 * (1 - t) ** 0.7 + 0.3
-                left.append(X(_polar(cx, cy, rad, ang - w)))
-                right.append(X(_polar(cx, cy, rad, ang + w)))
-            d.polygon(left + right[::-1], fill=mid + (255,))
-    d.ellipse(X((cx - r * 1.14, cy - r * 1.14)) + X((cx + r * 1.14, cy + r * 1.14)), fill=dark + (255,))
-    layer = ss.done()
-    disc = _radial(int(r), tint(c, 0.78), c)
-    layer.alpha_composite(disc, (int(cx - r), int(cy - r)))
-    ss2 = _SS()
-    d = ss2.d
-    d.ellipse(X((cx - r, cy - r)) + X((cx + r, cy + r)), outline=dark + (255,), width=5)
-    if face:
-        f = shade(c, 0.55) + (255,)
-        for sx in (-1, 1):                                   # closed eyes + brows
-            ex = cx + sx * r * 0.36
-            d.arc(X((ex - r * 0.17, cy - r * 0.2)) + X((ex + r * 0.17, cy + r * 0.04)), 20, 160, fill=f, width=6)
-            d.arc(X((ex - r * 0.24, cy - r * 0.36)) + X((ex + r * 0.24, cy - r * 0.08)), 200, 340, fill=f, width=5)
-        d.line([X((cx, cy - r * 0.1)), X((cx - r * 0.05, cy + r * 0.16)), X((cx + r * 0.07, cy + r * 0.2))], fill=f, width=5)
-        d.arc(X((cx - r * 0.3, cy + r * 0.2)) + X((cx + r * 0.3, cy + r * 0.52)), 25, 155, fill=f, width=6)
-    layer.alpha_composite(ss2.done())
-    return layer
 
 
 def _metal(top, mid, bot, y0, y1):
@@ -806,33 +693,6 @@ def _metal(top, mid, bot, y0, y1):
             col = tuple(int(mid[i] * (1 - u) + bot[i] * u) for i in range(3))
         d.line([(0, y), (S, y)], fill=col)
     return g
-
-
-def _paste_lion(img, size, pos, c, fill_img, rim_col, eye_col=None, rim=11, glow=1.6, outline=None):
-    """Draw the lion silhouette filled with fill_img, a glowing rim light and a glowing eye."""
-    lion = _lion_mask(size)
-    mask = Image.new("L", (S, S), 0)
-    mask.paste(lion, pos)
-    edge = ImageChops.subtract(mask.filter(ImageFilter.MaxFilter(rim)), mask)
-    img = _glow_from_mask(img, edge, rim_col, 7, glow, 2)
-    if outline:
-        ol = Image.new("RGBA", (S, S), outline + (255,))
-        ol.putalpha(ImageChops.subtract(mask.filter(ImageFilter.MaxFilter(7)), mask))
-        img = _over(img, ol)
-    lay = fill_img.convert("RGBA")
-    lay.putalpha(mask)
-    img = _over(img, lay)
-    if not outline:
-        rl = Image.new("RGBA", (S, S), rim_col + (255,))
-        rl.putalpha(edge.point(lambda p: int(p * 0.9)))
-        img = _over(img, rl)
-    ex, ey = pos[0] + LION_EYE[0] * size / 100, pos[1] + LION_EYE[1] * size / 100
-    em = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(em).ellipse((ex - 9, ey - 6, ex + 9, ey + 6), fill=255)
-    img = _glow_from_mask(img, em, eye_col or rim_col, 8, 2.0, 2)
-    el = _layer()
-    ImageDraw.Draw(el).ellipse((ex - 5, ey - 3.5, ex + 5, ey + 3.5), fill=(255, 255, 255, 255))
-    return _over(img, el)
 
 
 def _god_rays(img, cx, cy, c, count=18, length=900, alpha=46, seed=0):
@@ -859,88 +719,444 @@ def _embers(img, c, now, n=46, area=(0, 0, S, S), seed_extra=0):
     return _over(_over(img, g), lay)
 
 
+
+# ------------------------------------------------------------------ Lion & Sun emblem (crowned, laurel wreath) as crystal
+class _EC:
+    """100x100 design grid -> supersampled L masks."""
+    def __init__(self, size=800, ss=2, w=100, h=100):
+        self.N = size * ss; self.size = size; self.ss = ss
+        self.k = self.N / 100.0
+        self.m = Image.new("L", (self.N, self.N), 0)
+        self.d = ImageDraw.Draw(self.m)
+
+    def P(self, x, y): return (x * self.k, y * self.k)
+
+    def disc(self, x, y, r, v=255, d=None):
+        (d or self.d).ellipse((self.P(x - r, y - r) + self.P(x + r, y + r)), fill=v)
+
+    def ell(self, x, y, rx, ry, rot=0, v=255, d=None):
+        pts = []
+        for i in range(48):
+            a = 2 * math.pi * i / 48
+            px, py = rx * math.cos(a), ry * math.sin(a)
+            c, s = math.cos(math.radians(rot)), math.sin(math.radians(rot))
+            pts.append(self.P(x + px * c - py * s, y + px * s + py * c))
+        (d or self.d).polygon(pts, fill=v)
+
+    def tube(self, pts, w0, w1, n=12, v=255, d=None):
+        path = _cr(pts, n=n)
+        for i, (x, y) in enumerate(path):
+            self.disc(x, y, (w0 + (w1 - w0) * i / max(len(path) - 1, 1)) / 2, v, d)
+
+    def poly(self, pts, n=10, v=255, d=None, closed=True):
+        (d or self.d).polygon([self.P(*p) for p in _cr(pts, n=n, closed=closed)], fill=v)
+
+    def flat(self, pts, v=255, d=None):
+        (d or self.d).polygon([self.P(*p) for p in pts], fill=v)
+
+    def line(self, pts, w=0.6, v=255, n=10, d=None, smooth=True):
+        path = _cr(pts, n=n) if smooth else pts
+        (d or self.d).line([self.P(*p) for p in path], fill=v, width=max(1, int(w * self.k)), joint="curve")
+
+    def leaf(self, x, y, ang, length, width, v=255, d=None):
+        L, W = [], []
+        for i in range(11):
+            t = i / 10
+            hw = width / 2 * math.sin(math.pi * t) ** 0.75
+            L.append((t * length, -hw)); W.append((t * length, hw))
+        a = math.radians(ang); c, s = math.cos(a), math.sin(a)
+        pts = [(x + px * c - py * s, y + px * s + py * c) for px, py in L + W[::-1]]
+        self.flat(pts, v, d)
+
+    def out(self):
+        return self.m.resize((self.size, self.size), Image.LANCZOS)
+
+
+def _emblem_build(size=800, ss=2):
+    """Heraldic Lion & Sun with crown, laurel wreath and bow. Returns dict of L masks:
+       fill (all solid shapes), cut (engraved lines), lion, sun, wreath, crown"""
+    layers = {}
+
+    def new(): return _EC(size, ss)
+
+    # ------------------------------------------------------------ laurel wreath + bow
+    W = new()
+    cx0, cy0, R = 50, 54.5, 33
+    for sgn in (1, -1):
+        def X(x): return x if sgn == 1 else 100 - x
+        pts = []
+        for th in range(96, 246, 6):                  # bottom -> top, left side (th in deg, y down)
+            a = math.radians(th)
+            pts.append((cx0 + R * math.cos(a), cy0 + R * math.sin(a)))
+        pts = [(X(x), y) for x, y in pts]
+        W.tube(pts, 1.1, 0.8, n=6)
+        for i, th in enumerate(range(100, 242, 9)):
+            a = math.radians(th)
+            px, py = cx0 + R * math.cos(a), cy0 + R * math.sin(a)
+            tang = th + 90                            # growth direction (towards increasing th)
+            for side, ln, wd in ((-1, 8.6, 3.5), (1, 7.2, 3.0)):
+                ang = tang + side * 42
+                ax, ay = px, py
+                if sgn == -1:
+                    ax = 100 - px
+                    ang = 180 - ang
+                W.leaf(ax, ay, ang, ln, wd)
+        a = math.radians(246)
+        tx, ty = cx0 + R * math.cos(a), cy0 + R * math.sin(a)
+        W.leaf(X(tx), ty, (336 if sgn == 1 else 180 - 336), 8, 3.2)
+    # bow
+    for sgn in (1, -1):
+        X = (lambda x: x) if sgn == 1 else (lambda x: 100 - x)
+        W.ell(X(43.5), 89.7, 6.4, 3.0, rot=(-22 if sgn == 1 else 22))
+        W.flat([(X(47), 91), (X(41.5), 96.5), (X(45), 97.2), (X(49.5), 93)])
+    W.disc(50, 90.1, 2.4)
+    layers["wreath"] = W.out()
+
+    # ------------------------------------------------------------ crown
+    C = new()
+    C.flat([(37.5, 21.5), (35.5, 11.5), (41.5, 15.5), (44, 8.5), (50, 14.5), (56, 8.5), (58.5, 15.5), (64.5, 11.5), (62.5, 21.5)])
+    C.ell(50, 12.5, 7.8, 5.4)
+    C.ell(50, 5.2, 2.6, 3.8)                         # finial tuft
+    C.disc(50, 1.6, 1.4)
+    for x, y in ((35.5, 10.4), (44, 7.4), (56, 7.4), (64.5, 10.4)):
+        C.disc(x, y, 1.7)
+    C.m = C.m
+    C.d.rounded_rectangle((C.P(36.4, 20.6) + C.P(63.6, 26.2)), radius=int(1.4 * C.k), fill=255)
+    layers["crown"] = C.out()
+    cc = new()
+    cc.line([(41, 17), (50, 19.5), (59, 17)], 0.45, 255)
+    for x in (42.5, 50, 57.5):
+        cc.disc(x, 23.4, 1.0)
+    cc.line([(46.5, 8.5), (47.2, 14)], 0.4); cc.line([(53.5, 8.5), (52.8, 14)], 0.4)
+    layers["crown_cut"] = cc.out()
+
+    # ------------------------------------------------------------ sun (behind the lion)
+    S_ = new()
+    sx, sy, sr = 64.5, 44, 6.4
+    for i in range(24):
+        a = math.radians(i * 15)
+        if i % 2 == 0:
+            p = [(sx + sr * 1.05 * math.cos(a - 0.12), sy + sr * 1.05 * math.sin(a - 0.12)), (sx + sr * 2.1 * math.cos(a), sy + sr * 2.1 * math.sin(a)),
+                 (sx + sr * 1.05 * math.cos(a + 0.12), sy + sr * 1.05 * math.sin(a + 0.12))]
+            S_.flat(p)
+        else:
+            L, Rr = [], []
+            for j in range(11):
+                t = j / 10
+                rad = sr * 1.05 + t * sr * 0.95
+                ang = a + 0.16 * math.sin(t * math.pi * 2.2)
+                w = 0.15 * (1 - t) ** 0.7 + 0.01
+                L.append((sx + rad * math.cos(ang - w), sy + rad * math.sin(ang - w)))
+                Rr.append((sx + rad * math.cos(ang + w), sy + rad * math.sin(ang + w)))
+            S_.flat(L + Rr[::-1])
+    S_.disc(sx, sy, sr)
+    layers["sun"] = S_.out()
+    sc = new()
+    sc.d.ellipse((sc.P(sx - sr * 1.16, sy - sr * 1.16) + sc.P(sx + sr * 1.16, sy + sr * 1.16)), outline=255, width=max(1, int(0.5 * sc.k)))
+    # tiny serene face
+    for e in (-1, 1):
+        sc.line([(sx + e * 2.7 - 1.3, sy - 1.3), (sx + e * 2.7, sy - 1.9), (sx + e * 2.7 + 1.3, sy - 1.3)], 0.4)
+    sc.line([(sx, sy - 1.0), (sx - 0.4, sy + 1.2), (sx + 0.6, sy + 1.4)], 0.35)
+    sc.line([(sx - 2.0, sy + 2.9), (sx, sy + 3.6), (sx + 2.0, sy + 2.9)], 0.45)
+    layers["sun_cut"] = sc.out()
+
+    # ------------------------------------------------------------ lion (frontal head, profile body facing left)
+    Ln = new()
+    # hind legs + paws
+    Ln.tube([(73.5, 59), (71, 67.5), (75, 73), (73.5, 77.5)], 8.2, 2.8)
+    Ln.ell(73, 78, 4.6, 1.3)
+    Ln.tube([(67.5, 59), (65, 68), (68.5, 73.5), (66.5, 77.5)], 8.8, 3.0)
+    Ln.ell(66, 78, 4.8, 1.3)
+    # standing front leg
+    Ln.tube([(54, 60), (54.6, 68.5), (53, 73.5), (52, 77.5)], 6.2, 2.7)
+    Ln.ell(51.4, 78, 4.3, 1.3)
+    # torso
+    Ln.poly([(49.5, 52.5), (57, 51), (65.5, 51.8), (72.5, 52), (77, 56), (76, 62), (71, 65.5), (64, 62.5), (57, 63), (51.5, 65), (47.5, 61)], n=8)
+    # tail (S curve) + tuft
+    Ln.tube([(76.5, 55), (80.5, 52), (81.2, 46.5), (79, 42.5), (75.8, 41.8)], 2.0, 1.4, n=8)
+    Ln.flat([(75.8, 42.8), (73.2, 39), (76, 39.8), (76.8, 36.2), (78.8, 40), (81, 38.6), (79.4, 43.6)])
+    # raised paw with sword, clear of the mane
+    Ln.tube([(49.5, 60.5), (43.5, 65), (36, 63), (31.5, 57.5)], 5.8, 4.0)
+    Ln.disc(30.6, 56, 3.0)
+    # mane: ring of curls around the frontal face + trailing locks over the shoulders
+    hx, hy = 47.5, 49.5
+    for ring, (rad, br, cnt, off) in enumerate(((9.0, 3.0, 19, 0), (11.4, 2.2, 22, 8))):
+        for i in range(cnt):
+            a = math.radians(off + i * 360 / cnt)
+            Ln.disc(hx + rad * math.cos(a), hy + rad * 1.02 * math.sin(a), br + 0.3 * math.sin(i * 1.9))
+    Ln.disc(hx, hy, 9.8)
+    for (x, y, r) in ((55.5, 46.5, 2.8), (59.5, 48, 2.5), (63, 50.5, 2.2), (55, 57.5, 3.2), (59, 58.5, 2.5)):
+        Ln.disc(x, y, r)
+    # ears, face
+    Ln.disc(41, 43.5, 2.2); Ln.disc(54, 43.5, 2.2)
+    Ln.ell(hx, hy + 1, 6.4, 7.2)
+    # scimitar blade (crescent), hilt in paw
+    blade = _cr([(30.4, 55), (28.2, 47), (28.4, 40), (31.5, 35), (36.5, 33)], n=10)
+    Lf, Rt = [], []
+    for i, (x, y) in enumerate(blade):
+        w = 1.05 * (1 - (i / (len(blade) - 1)) ** 1.8) + 0.1
+        Lf.append((x - w, y)); Rt.append((x + w, y))
+    Ln.flat(Lf + Rt[::-1])
+    Ln.line([(27.6, 56), (33.6, 57)], 1.1, smooth=False)
+    layers["lion"] = Ln.out()
+
+    Lc = new()
+    # face details (cut lines)
+    for e in (-1, 1):
+        ex = hx + e * 2.8
+        Lc.line([(ex - 1.5 * e, hy - 0.5), (ex, hy - 1.3), (ex + 1.6 * e, hy - 0.4), (ex, hy + 0.3), (ex - 1.5 * e, hy - 0.5)], 0.35)
+        Lc.line([(ex - 2.0, hy - 2.7), (ex + 0.2 * e, hy - 3.1), (ex + 2.0, hy - 2.4)], 0.4)
+    Lc.line([(hx, hy - 1.5), (hx, hy + 2.6)], 0.45)                      # nose bridge
+    Lc.flat([(hx - 1.9, hy + 2.5), (hx + 1.9, hy + 2.5), (hx, hy + 4.0)])  # nose
+    Lc.line([(hx, hy + 4), (hx, hy + 5.3)], 0.4)
+    Lc.line([(hx - 2.8, hy + 5.6), (hx - 1.1, hy + 5.1), (hx, hy + 5.0), (hx + 1.1, hy + 5.1), (hx + 2.8, hy + 5.6)], 0.38)
+    Lc.line([(hx - 2.0, hy + 6.6), (hx, hy + 7.2), (hx + 2.0, hy + 6.6)], 0.38)
+    for e in (-1, 1):                                                    # whisker dots
+        for (dx, dy) in ((2.2, 4.2), (3.2, 5.0), (2.0, 5.4)):
+            Lc.disc(hx + e * dx, hy + dy, 0.28)
+    # mane curl lines
+    for a0 in range(0, 360, 36):
+        a = math.radians(a0 + 6)
+        Lc.line([(hx + 7.6 * math.cos(a), hy + 7.8 * math.sin(a)), (hx + 9.6 * math.cos(a + 0.12), hy + 9.8 * math.sin(a + 0.12))], 0.32)
+    # body / leg details
+    Lc.line([(58, 55), (60, 60), (58, 63)], 0.35); Lc.line([(67.5, 54), (70.5, 59), (68.5, 64)], 0.4)
+    Lc.line([(54, 63), (54.6, 67)], 0.3)
+    layers["lion_cut"] = Lc.out()
+    return layers
+
+
+
+
+# ------------------------------------------------------------------ the REAL Lion & Sun emblem (from the reference flag image)
+@functools.lru_cache(maxsize=1)
+def _emblem_src():
+    return Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "lion_sun.png")).convert("RGBA")
+
+
+@functools.lru_cache(maxsize=8)
+def _emblem_img(size):
+    """The flag emblem (gold lion, sun, crown, laurel wreath, bow) fitted into a size x size box."""
+    im = _emblem_src()
+    k = size / max(im.size)
+    return im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
+
+
+def _emblem_draw(img, size, pos, c, glow=0.8, glow_r=26):
+    """Draw the emblem exactly as in the reference (original gold), with a soft shadow, an accent-coloured glow and a sheen."""
+    em = _emblem_img(size)
+    full = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    full.paste(em, (pos[0] + (size - em.width) // 2, pos[1] + (size - em.height) // 2))
+    a = full.split()[3]
+    sh = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+    sh.putalpha(a.filter(ImageFilter.GaussianBlur(12)).point(lambda p: int(p * 0.6)))
+    img = _over(img, ImageChops.offset(sh, 4, 10))
+    if glow:
+        img = _glow_from_mask(img, a, c, glow_r, glow, 1)
+    img = _over(img, full)
+    bb = a.getbbox()
+    if bb:                                   # light sweep + edge highlight (keeps the original gold look)
+        g = Image.new("L", (S, S))
+        gd = ImageDraw.Draw(g)
+        for y in range(bb[1], bb[3]):
+            t = (y - bb[1]) / max(bb[3] - bb[1], 1)
+            gd.line([(0, y), (S, y)], fill=int(255 * 0.22 * (1 - t) ** 1.5))
+        sheen = Image.new("RGBA", (S, S), (255, 244, 205, 255))
+        sheen.putalpha(ImageChops.multiply(g, a))
+        img = _over(img, sheen)
+        lit = ImageChops.subtract(a, ImageChops.offset(a, 2, 2)).filter(ImageFilter.GaussianBlur(0.6))
+        hl = Image.new("RGBA", (S, S), (255, 250, 225, 255))
+        hl.putalpha(lit.point(lambda p: int(p * 0.7)))
+        img = _over(img, hl)
+    return img
+
+
+@functools.lru_cache(maxsize=6)
+def _emblem(size):
+    return _emblem_build(size)
+
+
+def _full(m, pos):
+    f = Image.new("L", (S, S), 0)
+    f.paste(m, pos)
+    return f
+
+
+def _emblem_shape(size, pos):
+    """Solid emblem as one L mask: the sun is cut away where the lion overlaps it, details are engraved gaps."""
+    ly = _emblem(size)
+    k = max(1, int(round(size / 800 * 4))) * 2 + 1
+    lion, sun, wreath, crown = (_full(ly[n], pos) for n in ("lion", "sun", "wreath", "crown"))
+    sun2 = ImageChops.subtract(sun, lion.filter(ImageFilter.MaxFilter(k)))
+    solid = ImageChops.lighter(ImageChops.lighter(sun2, lion), ImageChops.lighter(wreath, crown))
+    cut = ImageChops.lighter(ImageChops.lighter(_full(ly["lion_cut"], pos), _full(ly["sun_cut"], pos)), _full(ly["crown_cut"], pos))
+    return ImageChops.subtract(solid, ImageChops.multiply(cut, solid))
+
+
+def _crystal(img, shape, c, depth=3, frost=0.2, tintk=0.26, glow=0.9, glow_r=22, shadow=True):
+    """Draw an L mask as frosted crystal: blurred backdrop, colour tint, sheen, light streaks and a bevelled edge."""
+    bb = shape.getbbox()
+    if not bb:
+        return img
+    if shadow:
+        sh = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+        sh.putalpha(shape.filter(ImageFilter.GaussianBlur(14)).point(lambda p: int(p * 0.55)))
+        img = _over(img, ImageChops.offset(sh, 5, 12))
+    if glow:
+        img = _glow_from_mask(img, shape, c, glow_r, glow, 1)
+    body = _over(img.filter(ImageFilter.GaussianBlur(12)), Image.new("RGBA", (S, S), (255, 255, 255, int(255 * frost))))
+    body = _over(body, Image.new("RGBA", (S, S), c + (int(255 * tintk),)))
+    g = Image.new("L", (S, S))
+    gd = ImageDraw.Draw(g)
+    for y in range(S):
+        t = min(max((y - bb[1]) / max(bb[3] - bb[1], 1), 0), 1)
+        gd.line([(0, y), (S, y)], fill=int(255 * (0.34 * (1 - t) ** 1.4 + 0.04)))
+    wl = Image.new("RGBA", (S, S), (255, 255, 255, 255))
+    wl.putalpha(g)
+    body = _over(body, wl)
+    st = _layer()
+    d = ImageDraw.Draw(st)
+    for off, w, a in ((-120, 70, 52), (120, 26, 40), (260, 16, 30)):
+        d.polygon([(off, S), (off + w, S), (off + w + S * 0.9, 0), (off + S * 0.9, 0)], fill=(255, 255, 255, a))
+    body = _over(body, st)
+    body.putalpha(shape)
+    img = _over(img, body)
+    lit = ImageChops.subtract(shape, ImageChops.offset(shape, depth, depth))
+    dark = ImageChops.subtract(shape, ImageChops.offset(shape, -depth, -depth))
+    inner = ImageChops.subtract(shape, shape.filter(ImageFilter.MinFilter(2 * depth + 1))).filter(ImageFilter.GaussianBlur(3))
+    for col, m, k in ((tint(c, 0.35), inner, 0.55), (shade(c, 0.7), dark.filter(ImageFilter.GaussianBlur(0.8)), 0.78),
+                      ((255, 255, 255), lit.filter(ImageFilter.GaussianBlur(0.7)), 1.0),
+                      (tint(c, 0.8), ImageChops.subtract(shape.filter(ImageFilter.MaxFilter(3)), shape), 0.6)):
+        lay = Image.new("RGBA", (S, S), col + (255,))
+        lay.putalpha(m.point(lambda p, k=k: min(255, int(p * k))))
+        img = _over(img, lay)
+    return img
+
+
+def _star(img, x, y, r):
+    lay = _layer()
+    ImageDraw.Draw(lay).polygon([(x, y - r), (x + r * 0.13, y - r * 0.13), (x + r, y), (x + r * 0.13, y + r * 0.13), (x, y + r),
+                                 (x - r * 0.13, y + r * 0.13), (x - r, y), (x - r * 0.13, y - r * 0.13)], fill=(255, 255, 255, 255))
+    return _over(_over(img, lay.filter(ImageFilter.GaussianBlur(6))), lay)
+
+
+def _crystal_panel(img, box, radius, c):
+    """Frosted glass plate (backdrop blur, soft shadow, bevelled border)."""
+    m = _round_mask(box, radius)
+    sh = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+    sh.putalpha(m.filter(ImageFilter.GaussianBlur(20)).point(lambda p: int(p * 0.6)))
+    img = _over(img, ImageChops.offset(sh, 0, 14))
+    body = _over(img.filter(ImageFilter.GaussianBlur(16)), Image.new("RGBA", (S, S), (255, 255, 255, 34)))
+    body = _over(body, Image.new("RGBA", (S, S), c + (30,)))
+    body.putalpha(m)
+    img = _over(img, body)
+    lit = ImageChops.subtract(m, ImageChops.offset(m, 3, 3))
+    dark = ImageChops.subtract(m, ImageChops.offset(m, -3, -3))
+    for col, mm, k in (((255, 255, 255), lit, 0.85), (shade(c, 0.6), dark, 0.55)):
+        lay = Image.new("RGBA", (S, S), col + (255,))
+        lay.putalpha(mm.filter(ImageFilter.GaussianBlur(0.8)).point(lambda p, k=k: int(p * k)))
+        img = _over(img, lay)
+    return img
+
+
+def _crystal_text(img, text, pos, font, c, **kw):
+    return _crystal(img, _mask_text(text, pos, font), c, **kw)
+
+
 def _lionsun(img, c, hm, date, now):
-    """شیر و خورشید ۱: dark lion silhouette with a glowing rim in front of a blazing sun, light beams and embers."""
-    img = _dim(img, 0.68)
-    cx, cy, r = 540, 214, 112
-    halo = _layer()
-    ImageDraw.Draw(halo).ellipse((cx - 340, cy - 340, cx + 340, cy + 340), fill=c + (135,))
-    img = _over(img, halo.filter(ImageFilter.GaussianBlur(105)))
-    img = _god_rays(img, cx, cy, c, seed=now.minute // 5)
-    sun = _sun_layer(cx, cy, r, c)
-    img = _glow_from_mask(img, sun.split()[3], c, 28, 0.95, 1)
-    img = _over(img, sun)
-    ground = _layer()
-    ImageDraw.Draw(ground).ellipse((120, 548, 700, 596), fill=c + (150,))
-    img = _over(img, ground.filter(ImageFilter.GaussianBlur(20)))
-    body = _metal(shade(c, 0.86), shade(c, 0.93), (4, 3, 5), 60, 560)
-    img = _paste_lion(img, 520, (110, 44), c, body, tint(c, 0.55))
-    img = _embers(img, c, now, 40, (60, 40, 760, 600))
-    f = _fit("Poppins-Bold.ttf", hm, S * 0.8, 170)
-    img = glow_text(img, hm, (S / 2, 655), f, c, radius=18, core=(255, 255, 255))
-    return plain_text(img, date, (S / 2, 752), _font("Poppins-Medium.ttf", 38), (255, 255, 255, 235))
+    """شیر و خورشید بلوری ۱: crystal emblem on top, frosted glass clock plate with a minute bar below."""
+    img = _dim(img, 0.5)
+    img = _god_rays(img, S / 2, 250, c, count=14, alpha=26, seed=now.minute // 5)
+    pos, size = ((S - 520) // 2, 4), 520
+    img = _emblem_draw(img, size, pos, c)
+    img = _star(img, S / 2, 20, 26)
+    img = _crystal_panel(img, (150, 536, S - 150, 696), 44, c)
+    f = _fit("Poppins-Bold.ttf", hm, 400, 120)
+    img = plain_text(img, hm, (S / 2, 590), f, (255, 255, 255, 255))
+    img = plain_text(img, date, (S / 2, 646), _font("Poppins-Medium.ttf", 28), (255, 255, 255, 225), shadow=False)
+    bar = _layer()
+    d = ImageDraw.Draw(bar)
+    x0, x1, y = 200, S - 200, 676
+    d.rounded_rectangle((x0, y - 3, x1, y + 3), radius=3, fill=(255, 255, 255, 70))
+    xe = x0 + (x1 - x0) * (now.minute * 60 + now.second) / 3600
+    d.rounded_rectangle((x0, y - 3, xe, y + 3), radius=3, fill=c + (255,))
+    d.ellipse((xe - 7, y - 7, xe + 7, y + 7), fill=tint(c, 0.8) + (255,))
+    return _over(_glow_from_mask(img, bar.split()[3], c, 6, 0.9, 1), bar)
 
 
 def _lionsun2(img, c, hm, date, now):
-    """شیر و خورشید ۲: royal gold medallion - sunburst, ornamental rings, golden lion and a time ribbon."""
-    img = _dim(img, 0.7)
-    cx, cy, R = S // 2, 338, 318
-    g1, g2, g3 = tint(c, 0.78), c, shade(c, 0.5)
+    """شیر و خورشید بلوری ۲: crystal emblem on the left, big stacked glass digits next to it."""
+    img = _dim(img, 0.5)
+    pos, size = (-4, 150), 440
+    img = _emblem_draw(img, size, pos, c)
+    img = _star(img, pos[0] + size * 0.5, pos[1] + 12, 22)
+    hh, mm = hm.split(":")
+    f = _font("Poppins-Bold.ttf", 214)
+    img = _crystal_text(img, hh, (594, 268), f, c, depth=4, frost=0.1, tintk=0.3, glow=1.1)
+    img = _crystal_text(img, mm, (594, 490), f, c, depth=4, frost=0.1, tintk=0.3, glow=1.1)
+    lay = _layer()
+    d = ImageDraw.Draw(lay)
+    d.line([(486, 382), (702, 382)], fill=c + (255,), width=4)
+    d.ellipse((586, 374, 602, 390), fill=tint(c, 0.8) + (255,))
+    d.line([(424, 210), (424, 590)], fill=tint(c, 0.4) + (120,), width=2)
+    img = _over(_glow_from_mask(img, lay.split()[3], c, 8, 1.0, 1), lay)
+    return plain_text(img, date, (594, 640), _font("Poppins-Medium.ttf", 34), (255, 255, 255, 235))
+
+
+def _lionsun3(img, c, hm, date, now):
+    """شیر و خورشید بلوری ۳: crystal emblem inside a watch ring whose arc fills with the minutes."""
+    img = _dim(img, 0.55)
+    cx = cy = S / 2
+    R = 336
+    ring = Image.new("L", (S * 2, S * 2), 0)
+    rd = ImageDraw.Draw(ring)
+    rd.ellipse(((cx - R - 9) * 2, (cy - R - 9) * 2, (cx + R + 9) * 2, (cy + R + 9) * 2), fill=255)
+    rd.ellipse(((cx - R + 9) * 2, (cy - R + 9) * 2, (cx + R - 9) * 2, (cy + R - 9) * 2), fill=0)
+    img = _crystal(img, ring.resize((S, S), Image.LANCZOS), c, depth=3, frost=0.1, tintk=0.18, glow=0.5)
     ss = _SS()
     d = ss.d
     X = lambda p: (p[0] * 2, p[1] * 2)
-    d.ellipse(X((cx - R, cy - R)) + X((cx + R, cy + R)), fill=shade(c, 0.9) + (255,))
-    for i in range(36):                                      # sunburst wedges inside the disc
-        a = i * 10
-        d.polygon([X((cx, cy)), X(_polar(cx, cy, R - 24, a - 2.6)), X(_polar(cx, cy, R - 24, a + 2.6))], fill=shade(c, 0.62) + (255,) if i % 2 == 0 else shade(c, 0.78) + (255,))
-    disc = ss.done()
-    clip = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(clip).ellipse((cx - R, cy - R, cx + R, cy + R), fill=255)
-    sh = _layer()
-    ImageDraw.Draw(sh).ellipse((cx - R - 6, cy - R + 14, cx + R + 6, cy + R + 14), fill=(0, 0, 0, 170))
-    img = _over(img, sh.filter(ImageFilter.GaussianBlur(22)))
-    img = _over(img, disc)
-    # rings + tick marks
-    ss = _SS()
-    d = ss.d
-    for rr, w, col in ((R, 7, g2), (R - 14, 3, g1), (R - 40, 3, g2), (R - 56, 2, g3)):
-        d.ellipse(X((cx - rr, cy - rr)) + X((cx + rr, cy + rr)), outline=col + (255,), width=w * 2)
-    for i in range(72):
-        a = i * 5
-        p1, p2 = _polar(cx, cy, R - 40, a), _polar(cx, cy, R - 52 if i % 2 else R - 56, a)
-        d.line([X(p1), X(p2)], fill=g1 + (255,), width=4)
-    for i in range(12):
-        a = i * 30
-        d.ellipse(X((_polar(cx, cy, R - 27, a)[0] - 6, _polar(cx, cy, R - 27, a)[1] - 6)) + X((_polar(cx, cy, R - 27, a)[0] + 6, _polar(cx, cy, R - 27, a)[1] + 6)), fill=g1 + (255,))
+    for i in range(60):
+        a = i * 6
+        big = i % 5 == 0
+        d.line([X(_polar(cx, cy, R - 26, a)), X(_polar(cx, cy, R - (46 if big else 38), a))], fill=(255, 255, 255, 255 if big else 150), width=6 if big else 3)
     img = _over(img, ss.done())
-    # sun (behind the lion) + golden lion
-    sun = _sun_layer(cx + 96, cy - 118, 92, c, rays=24)
-    inner = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(inner).ellipse((cx - R + 62, cy - R + 62, cx + R - 62, cy + R - 62), fill=255)
-    sun.putalpha(ImageChops.multiply(sun.split()[3], inner))
-    img = _glow_from_mask(img, sun.split()[3], c, 22, 0.7, 1)
-    img = _over(img, sun)
-    gold = _metal(tint(c, 0.9), g2, shade(c, 0.62), 80, 520)
-    img = _paste_lion(img, 440, (cx - 232, 92), c, gold, g1, rim=9, glow=0.55, outline=shade(c, 0.82))
-    # ribbon with the time
-    rb = _layer()
-    d = ImageDraw.Draw(rb)
-    y0, y1 = 578, 700
-    d.polygon([(70, y0 + 24), (150, y0 + 24), (150, y1 - 10), (70, y1 - 10), (104, (y0 + y1) / 2 + 6)], fill=g3 + (255,))
-    d.polygon([(S - 70, y0 + 24), (S - 150, y0 + 24), (S - 150, y1 - 10), (S - 70, y1 - 10), (S - 104, (y0 + y1) / 2 + 6)], fill=g3 + (255,))
-    img = _over(img, rb)
-    shb = Image.new("RGBA", (S, S), (0, 0, 0, 255))
-    shb.putalpha(_round_mask((130, y0 + 12, S - 130, y1 + 12), 26).filter(ImageFilter.GaussianBlur(14)).point(lambda p: int(p * 0.7)))
-    img = _over(img, shb)
-    plate = _metal(g1, g2, g3, y0, y1).convert("RGBA")
-    plate.putalpha(_round_mask((130, y0, S - 130, y1 - 4), 26))
-    img = _over(img, plate)
-    ol = _layer()
-    ImageDraw.Draw(ol).rounded_rectangle((130, y0, S - 130, y1 - 4), radius=26, outline=tint(c, 0.9) + (230,), width=3)
-    img = _over(img, ol)
-    f = _fit("Poppins-Bold.ttf", hm, S * 0.46, 118)
-    img = plain_text(img, hm, (S / 2, (y0 + y1) / 2 - 4), f, shade(c, 0.78) + (255,), shadow=False)
-    return plain_text(img, date, (S / 2, 752), _font("Poppins-Medium.ttf", 38), (255, 255, 255, 235))
+    frac = (now.minute * 60 + now.second) / 3600
+    if frac > 0.003:
+        arc = Image.new("L", (S * 2, S * 2), 0)
+        ImageDraw.Draw(arc).arc((int((cx - R) * 2), int((cy - R) * 2), int((cx + R) * 2), int((cy + R) * 2)), -90, -90 + 360 * frac, fill=255, width=18)
+        arc = arc.resize((S, S), Image.LANCZOS)
+        img = _glow_from_mask(img, arc, c, 12, 1.4, 2)
+        al = Image.new("RGBA", (S, S), tint(c, 0.55) + (255,))
+        al.putalpha(arc)
+        img = _over(img, al)
+        hx, hy = _polar(cx, cy, R, 360 * frac)
+        hd = _layer()
+        ImageDraw.Draw(hd).ellipse((hx - 13, hy - 13, hx + 13, hy + 13), fill=(255, 255, 255, 255))
+        img = _over(_glow_from_mask(img, hd.split()[3], c, 10, 1.6, 2), hd)
+    pos, size = (200, 104), 400
+    img = _emblem_draw(img, size, pos, c)
+    img = _star(img, S / 2, pos[1] + 10, 20)
+    f = _fit("Poppins-Bold.ttf", hm, 300, 92)
+    img = _crystal_text(img, hm, (cx, 590), f, c, depth=3, frost=0.1, tintk=0.28, glow=1.0)
+    return plain_text(img, date, (cx, 646), _font("Poppins-Medium.ttf", 28), (255, 255, 255, 230), shadow=False)
+
+
+def _lionsun4(img, c, hm, date, now):
+    """شیر و خورشید بلوری ۴ (الماسی): large golden-crystal emblem, light beams and thick glass numerals."""
+    img = _dim(img, 0.62)
+    halo = _layer()
+    ImageDraw.Draw(halo).ellipse((S / 2 - 330, 20, S / 2 + 330, 560), fill=c + (120,))
+    img = _over(img, halo.filter(ImageFilter.GaussianBlur(90)))
+    img = _god_rays(img, S / 2, 300, c, count=22, alpha=40, seed=now.minute // 3)
+    pos, size = ((S - 580) // 2, 0), 580
+    img = _emblem_draw(img, size, pos, c)
+    rnd = random.Random(now.hour * 60 + now.minute)
+    for _ in range(7):
+        img = _star(img, rnd.randint(150, 650), rnd.randint(30, 520), rnd.randint(8, 18))
+    img = _star(img, S / 2, 22, 30)
+    f = _fit("Poppins-Bold.ttf", hm, 520, 170)
+    img = _crystal_text(img, hm, (S / 2, 662), f, c, depth=4, frost=0.08, tintk=0.34, glow=1.2, glow_r=24)
+    return plain_text(img, date, (S / 2, 752), _font("Poppins-Medium.ttf", 34), (255, 255, 255, 235))
 
 
 # ------------------------------------------------------------------ 8 more designs
@@ -1348,6 +1564,8 @@ STYLES += [("lionsun", "🦁 شیر و خورشید ۱"), ("lionsun2", "🦁 ش�
            ("roman", "آنالوگ رومی لوکس")]
 _DRAW.update({"lionsun": _lionsun, "lionsun2": _lionsun2, "crown": _crown, "shield": _shield, "cinema": _cinema,
               "polaroid": _polaroid, "radar": _radar, "hexa": _hexa, "ember": _ember, "roman": _roman})
+STYLES += [("lionsun3", "🦁 شیر و خورشید ۳"), ("lionsun4", "🦁 شیر و خورشید ۴")]
+_DRAW.update({"lionsun3": _lionsun3, "lionsun4": _lionsun4})
 
 
 def style_key(v):
