@@ -112,6 +112,9 @@ def _ydl(opts=None):
 _CLIENTS = (["web_safari"], ["tv"], ["android_vr"], ["mweb"], ["ios"], None)
 
 
+_PAGE_CACHE: dict = {}          # preset -> (time, page url)   (skips the slow search on the next start)
+
+
 def _find_live_url(query, words):
     """Search YouTube with the *Live* filter for a currently live video whose channel name matches `words`."""
     from urllib.parse import quote_plus
@@ -239,21 +242,29 @@ def resolve_source(src):
     title = ""
     if src in PRESETS:
         name, query, words = PRESETS[src]
-        page = _find_live_url(query, words)
+        hit = _PAGE_CACHE.get(src)
+        page = hit[1] if hit and time.time() - hit[0] < 1800 else None
         if not page:
-            raise RuntimeError("الان لایو زنده‌ای از این شبکه پیدا نشد")
+            page = _find_live_url(query, words)
+            if not page:
+                raise RuntimeError("الان لایو زنده‌ای از این شبکه پیدا نشد")
+            _PAGE_CACHE[src] = (time.time(), page)
         title = name
     else:
         page = src
         if is_direct(page):
             return page, {}, src[:60]
-    media, hdr, t = _extract(page)
+    try:
+        media, hdr, t = _extract(page)
+    except Exception:
+        _PAGE_CACHE.pop(src, None)
+        raise
     return media, hdr, title or t[:60]
 
 
 # ------------------------------------------------------------------ ffmpeg
 def build_cmd(ff, media, headers, rtmp, quality, force_encode=False):
-    cmd = [ff, "-hide_banner", "-nostdin", "-loglevel", "warning", "-nostats", "-progress", "pipe:1", "-stats_period", "2"]
+    cmd = [ff, "-hide_banner", "-nostdin", "-loglevel", "warning", "-nostats", "-progress", "pipe:1", "-stats_period", "1"]
     medias = media if isinstance(media, (list, tuple)) else [media]
     for m in medias:
         if re.match(r"^https?://", m, re.I):
@@ -261,7 +272,9 @@ def build_cmd(ff, media, headers, rtmp, quality, force_encode=False):
             if hdr:
                 cmd += ["-headers", hdr]
             cmd += ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
-        cmd += ([] if re.search(r"m3u8|manifest|^rtmps?://", m, re.I) else ["-re"]) + ["-i", m]
+        hls = bool(re.search(r"m3u8|manifest", m, re.I))
+        cmd += (["-fflags", "+nobuffer+genpts", "-analyzeduration", "1500000", "-probesize", "1500000", "-live_start_index", "-2"] if hls else
+                [] if re.match(r"^rtmps?://", m, re.I) else ["-re"]) + ["-i", m]
     cmd += ["-map", "0:v:0?", "-map", "1:a:0?" if len(medias) > 1 else "0:a:0?"]
     q = QUALITY.get(quality) if quality else None
     if q or force_encode:
@@ -283,7 +296,8 @@ async def _supervisor(c, uid, st):
     try:
         while not st["stop"]:
             try:
-                media, headers, title = await asyncio.to_thread(resolve_source, st["src"])
+                pre = st.pop("pre", None)                                # already resolved by .لایو شروع -> no second lookup
+                media, headers, title = pre or await asyncio.to_thread(resolve_source, st["src"])
                 st["title"] = title or st["title"]
             except Exception as ex:                                  # noqa: BLE001
                 fails += 1
@@ -461,6 +475,8 @@ async def c_live(c, e, uid, arg):
         src = pick_preset(rest) or (rest if rest.startswith(("http", "rtmp", "rtsp", "udp", "srt")) else None)
         if not src:
             return await e.edit("شبکه یا لینک معتبر بده؛ `.لایو` رو بزن تا لیست رو ببینی")
+        if re.search(r"rtmp\.t\.me|/s/\d+:", src):
+            return await e.edit("⚠️ این آدرس مقصد لایوئه نه منبع؛ شبکه یا لینک ویدیو بده")
         st["src"] = src
         await _restart_ff(st)
         return await e.edit(f"🔁 منبع عوض شد: **{PRESETS[src][0] if src in PRESETS else src[:50]}**")
@@ -498,37 +514,51 @@ async def _start(c, e, uid, rest):
     ent = await e.get_chat()
     if isinstance(ent, types.Chat):
         return await e.edit("⚠️ این یه گروه معمولیه؛ لایو RTMP فقط برای ابرگروه و کانال کار می‌کنه (گروه رو به ابرگروه تبدیل کن)")
+    if re.search(r"rtmp\.t\.me|/s/\d+:", src):
+        return await e.edit("⚠️ این آدرس، **مقصد** لایوئه (جایی که تلگرام تصویر رو می‌گیره) نه منبع.\n"
+                            "منبع باید شبکه یا لینک ویدیو باشه: `.لایو شروع` (اینترنشنال) | `.لایو شروع بی_بی_سی` | `.لایو شروع https://.../index.m3u8`")
     await e.edit("🔎 در حال پیدا کردن منبع و ساخت لایو...")
-    try:                                                          # fail early when the source is not available
-        media, _h, title = await asyncio.to_thread(resolve_source, src)
-    except Exception as ex:                                      # noqa: BLE001
-        m = str(ex)
-        hint = ("\n(یوتیوب IP سرور رو به‌عنوان ربات می‌شناسه؛ متغیر YT_COOKIES یا LIVE_PROXY رو تنظیم کن یا لینک مستقیم m3u8 بده)"
-                if re.search(r"sign in|not a bot|429|403", m, re.I) else "")
-        return await e.edit(f"⚠️ منبع در دسترس نیست: {m[:320]}{hint}")
     peer = await e.get_input_chat()
     chat_title = getattr(ent, "title", None) or str(e.chat_id)
-    try:
-        res = await c(functions.phone.CreateGroupCallRequest(peer=peer, random_id=random.getrandbits(31), rtmp_stream=True,
-                                                             title=f"{title or 'Live'}"[:60]))
-        call = _call_of(res)
-        full, url, key = await _rtmp(c, peer)
-    except errors.ChatAdminRequiredError:
-        return await e.edit("⛔ برای ساخت لایو باید ادمین با دسترسی «مدیریت چت‌های ویدیویی» باشی")
-    except errors.RPCError as ex:
+
+    async def make_call():
+        r = await c(functions.phone.CreateGroupCallRequest(peer=peer, random_id=random.getrandbits(31), rtmp_stream=True,
+                                                           title=("📡 " + (PRESETS[src][0].replace("📡 ", "") if src in PRESETS else "Live"))[:60]))
+        call_ = _call_of(r)
+        return call_, await _rtmp(c, peer)
+
+    # source lookup and Telegram live creation run at the same time (about half the start-up time)
+    r_src, r_call = await asyncio.gather(asyncio.to_thread(resolve_source, src), make_call(), return_exceptions=True)
+    if isinstance(r_src, Exception):
+        if not isinstance(r_call, Exception):
+            try:
+                await c(functions.phone.DiscardGroupCallRequest(call=r_call[0]))
+            except Exception:                                    # noqa: BLE001
+                pass
+        m = str(r_src)
+        hint = ("\n(یوتیوب IP سرور رو به‌عنوان ربات می‌شناسه؛ متغیر YT_COOKIES یا LIVE_PROXY رو تنظیم کن یا لینک مستقیم m3u8 بده)"
+                if re.search(r"sign in|not a bot|429|403|بلاک", m, re.I) else "")
+        return await e.edit(f"⚠️ منبع در دسترس نیست: {m[:320]}{hint}")
+    if isinstance(r_call, Exception):
+        ex = r_call
+        if isinstance(ex, errors.ChatAdminRequiredError):
+            return await e.edit("⛔ برای ساخت لایو باید ادمین با دسترسی «مدیریت چت‌های ویدیویی» باشی")
         msg = type(ex).__name__
         if "GROUPCALL" in msg.upper() or "ALREADY" in msg.upper():
             return await e.edit("⚠️ یه چت صوتی/ویدیویی یا لایو دیگه توی این چت روشنه؛ اول تمومش کن")
         return await e.edit(f"⚠️ ساخت لایو ناموفق بود ({msg})")
+    media_pre = r_src
+    title = r_src[2]
+    call, (full, url, key) = r_call
     st = {"chat_id": e.chat_id, "chat_title": chat_title, "call": call, "peer": peer, "src": src, "rtmp": full, "url": url, "key": key,
           "quality": await db.uget(uid, "live_q", "") or "", "started": time.time(), "stop": False, "title": title, "error": "", "proc": None,
-          "log": collections.deque(maxlen=8), "prog": {}}
+          "log": collections.deque(maxlen=8), "prog": {}, "pre": media_pre}
     _lives[uid] = st
     st["task"] = asyncio.create_task(_supervisor(c, uid, st))
-    await c.send_message("me", f"🔑 **RTMP لایوی {chat_title}** (برای OBS)\n`{url}`\nکلید: `{key}`")
+    asyncio.create_task(c.send_message("me", f"🔑 **RTMP لایوی {chat_title}** (فقط برای OBS؛ داخل `.لایو شروع` نذار)\n`{url}`\nکلید: `{key}`"))
     sent = False
-    for _ in range(20):                                           # up to ~20 s: wait until bytes really flow to Telegram
-        await asyncio.sleep(1)
+    for _ in range(50):                                           # up to ~25 s: wait until bytes really flow to Telegram
+        await asyncio.sleep(0.5)
         p = st.get("proc")
         if p is not None and p.returncode is None and _sent_bytes(st) > 30000:
             sent = True
