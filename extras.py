@@ -16,6 +16,7 @@ import aiohttp
 from telethon import errors, functions, types
 
 import db
+import forcejoin
 import utils
 
 log = logging.getLogger("extras")
@@ -438,7 +439,7 @@ async def daily_loop(c, uid):
     while True:
         try:
             await asyncio.sleep(20)
-            if not await db.user_is_active(uid) or not await db.uflag(uid, "selfon", True):
+            if not await forcejoin.usable(uid) or not await db.uflag(uid, "selfon", True):
                 continue
             items = await jget(uid, "daily", [])
             if not items:
@@ -533,7 +534,7 @@ async def stats_loop(c, uid):
             await asyncio.sleep(STAT_EVERY)
             if not await db.uflag(uid, "statbio", False) or await db.uflag(uid, "clock_bio", False):
                 continue
-            if not await db.user_is_active(uid) or not await db.uflag(uid, "selfon", True):
+            if not await forcejoin.usable(uid) or not await db.uflag(uid, "selfon", True):
                 continue
             await push_stats(c, uid)
         except asyncio.CancelledError:

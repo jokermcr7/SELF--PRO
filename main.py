@@ -7,7 +7,7 @@ import os
 import re
 import time
 
-from telethon import Button, TelegramClient, errors, events, types
+from telethon import Button, TelegramClient, errors, events, functions, types
 from telethon.sessions import StringSession
 
 import assets
@@ -15,6 +15,7 @@ import botapi
 import catalog
 import clockpic
 import db
+import forcejoin
 import groupgames
 import secure
 import selfbot
@@ -103,6 +104,7 @@ async def menu_markup(uid):
              botapi.url_btn("پشتیبانی", f"https://t.me/{SUPPORT}", R) if SUPPORT else B("پشتیبانی", "m:sup", R)]]
     if uid in ADMINS:                                   # owner-only tools
         rows.insert(3, [B("🎟 ساخت کد هدیه", "a:gift", G), B("👥 تمامی کاربران", "a:users:0", G)])
+        rows.insert(4, [B("🔒 عضویت اجباری", "a:fj", G)])
     last = []
     if CHANNEL:
         last.append(botapi.url_btn("چنل ما", f"https://t.me/{CHANNEL}", R))
@@ -168,6 +170,93 @@ async def edit_view(e, text, rows):
             await e.edit(text, buttons=botapi.to_telethon(markup), parse_mode="html")
         except errors.MessageNotModifiedError:
             pass
+
+
+# =========================================================== عضویت اجباری
+async def fj_gate(uid):
+    """Required chats the user has not joined. Uses the user's own session when the self runs; before the first
+    login it asks the bot (that works only if the bot is admin in the group - otherwise we don't block)."""
+    if uid in ADMINS:
+        return []
+    cfg = await forcejoin.load()
+    if not cfg.get("on") or not cfg.get("chats"):
+        return []
+    c = selfbot.clients.get(uid)
+    if c:
+        return await forcejoin.missing(uid, c)
+    out = []
+    for ch in cfg["chats"]:
+        try:
+            ent = await bot.get_input_entity(ch["u"])
+            r = await bot(functions.channels.GetParticipantRequest(channel=ent, participant=await bot.get_input_entity(uid)))
+            if isinstance(r.participant, (types.ChannelParticipantLeft, types.ChannelParticipantBanned)):
+                out.append(ch)
+        except errors.UserNotParticipantError:
+            out.append(ch)
+        except Exception:
+            pass                                    # can't verify -> don't block
+    return out
+
+
+def fj_markup(chats):
+    rows = [[botapi.url_btn(f"📢 عضویت در {ch.get('t') or ch['u']}", forcejoin.link(ch), G)] for ch in chats]
+    rows.append([B("✅ عضو شدم", "m:fjchk", G)])
+    rows.append([B("بازگشت", "m:menu", R)])
+    return {"inline_keyboard": rows}
+
+
+async def fj_view():
+    cfg = await forcejoin.load()
+    chats, on = cfg.get("chats", []), bool(cfg.get("on"))
+    lines = "\n".join(f"{i}. <a href=\"{forcejoin.link(c)}\">{esc(c.get('t') or c['u'])}</a> — <code>@{c['u']}</code>"
+                      for i, c in enumerate(chats, 1)) or "— هنوز گپی ثبت نشده —"
+    text = (f"<blockquote>🔒 عضویت اجباری</blockquote>\nوضعیت: <b>{'روشن ✅' if on else 'خاموش ❌'}</b>\n\n"
+            f"<b>لیست گپ‌های اجباری:</b>\n{lines}\n\n"
+            f"کاربری که عضو همه‌ی این گپ‌ها نباشه نمی‌تونه از سلف استفاده کنه و ربات هر {forcejoin.REMIND_MINUTES} دقیقه بهش یادآوری می‌کنه.")
+    rows = [[B("🔴 خاموش کردن" if on else "🟢 روشن کردن", "a:fjt", R if on else G)],
+            [B("➕ تنظیم (افزودن گپ)", "a:fjs", G)]]
+    rows += [[B(f"🗑 حذف @{c['u']}", f"a:fjd:{i}", R)] for i, c in enumerate(chats)]
+    if chats:
+        rows.append([B("🧹 پاکسازی همه", "a:fjc", R)])
+    rows.append([B("بازگشت", "m:menu", R)])
+    return text, rows
+
+
+fj_last: dict[int, float] = {}
+fj_warned: set[int] = set()
+
+
+async def fj_loop():
+    """Keeps reminding self owners who are not (or no longer) members; tells them when they are fine again."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            cfg = await forcejoin.load()
+            if not cfg.get("on") or not cfg.get("chats"):
+                fj_warned.clear()
+                continue
+            now = time.time()
+            for uid, c in list(selfbot.clients.items()):
+                if uid in ADMINS:
+                    continue
+                miss = await forcejoin.missing(uid, c)
+                if miss:
+                    if now - fj_last.get(uid, 0) >= forcejoin.REMIND_MINUTES * 60:
+                        fj_last[uid] = now
+                        fj_warned.add(uid)
+                        try:
+                            await botapi.send_text(uid, forcejoin.bot_text(miss), fj_markup(miss))
+                        except Exception:
+                            pass
+                elif uid in fj_warned:
+                    fj_warned.discard(uid)
+                    fj_last.pop(uid, None)
+                    try:
+                        await bot.send_message(uid, "✅ عضویتت تایید شد؛ سلف دوباره کامل فعاله 🎉")
+                    except Exception:
+                        pass
+        except Exception:
+            log.exception("fj loop")
 
 
 # =========================================================== login flow
@@ -446,6 +535,10 @@ async def cb_menu(e):
     if act == "login":
         if selfbot.clients.get(uid) and await db.user_is_active(uid):
             return await e.answer("سلفت همین الان فعاله ✅ (داخل هر چتی .پنل بزن)", alert=True)
+        miss = await fj_gate(uid)
+        if miss:
+            await e.answer("⛔ اول باید عضو گپ بشی", alert=True)
+            return await botapi.send_text(uid, forcejoin.bot_text(miss), fj_markup(miss))
         bal = await db.balance(uid)
         if not await db.has_funds(uid):
             await e.answer("⛔ الماس کافی نداری", alert=True)
@@ -460,6 +553,14 @@ async def cb_menu(e):
             uid, "لطفا شماره تلفن خود را از طریق دکمه زیر ارسال کنید:\n(یا خودت تایپ کن؛ هر فرمتی قبوله)",
             buttons=[[Button.request_phone("ارسال شماره تلفن", resize=True, single_use=True)],
                      [Button.text("❌ انصراف", resize=True, single_use=True)]])
+    if act == "fjchk":
+        forcejoin.forget(uid)
+        miss = await fj_gate(uid)
+        if miss:
+            return await e.answer("❌ هنوز عضو نشدی؛ اول عضو شو و دوباره بزن", alert=True)
+        fj_warned.discard(uid)
+        await e.answer("✅ عضویتت تایید شد", alert=True)
+        return await edit_view(e, welcome_text(), (await menu_markup(uid))["inline_keyboard"])
     if act == "bal":
         bal = await db.balance(uid)
         return await e.answer(f"💎 موجودی: {db.fmt(bal)}\n💰 ارزش: {db.value_text(bal)}", alert=True)
@@ -882,6 +983,33 @@ async def on_pending(e):
             pending.pop(uid, None)
             return
         return await gift_input(e, uid, kind[0], t)
+    if kind[0] == "fjadd":
+        if uid not in ADMINS:
+            pending.pop(uid, None)
+            return
+        u = forcejoin.parse_ref(t)
+        if not u:
+            return await e.respond("⚠️ لینک/یوزرنیم معتبر نیست. مثال: `https://t.me/XTM_SELF` یا `@XTM_SELF`\n"
+                                   "(لینک خصوصی مثل `t.me/+abc` پشتیبانی نمیشه). دوباره بفرست یا /start:")
+        try:
+            ent = await bot.get_entity(u)
+            if not isinstance(ent, types.Channel):
+                raise ValueError("not a channel/supergroup")
+            title = ent.title
+        except Exception:
+            return await e.respond("⚠️ این گپ/کانال پیدا نشد یا عمومی نیست. یوزرنیم درست رو بفرست یا /start:")
+        pending.pop(uid, None)
+        cfg = await forcejoin.load()
+        if any(c["u"].lower() == u.lower() for c in cfg["chats"]):
+            await e.respond("ℹ️ این گپ از قبل توی لیست بود.")
+        else:
+            cfg["chats"].append({"u": u, "t": title})
+            cfg["on"] = True
+            await forcejoin.save(cfg)
+            forcejoin.forget()
+            await e.respond(f"✅ «{title}» اضافه شد و عضویت اجباری روشنه.")
+        text, rows = await fj_view()
+        return await botapi.send_text(uid, text, {"inline_keyboard": rows})
     if kind[0] == "bcast":
         if uid not in ADMINS:
             pending.pop(uid, None)
@@ -1319,6 +1447,42 @@ async def cb_admin(e):
         await e.answer("🥾 کیک شد", alert=True)
         await notify(tuid, "⛔ سلف تو توسط مدیر متوقف شد. برای اطلاعات بیشتر با پشتیبانی در تماس باش.")
         return await edit_view(e, *await user_detail_view(tuid, page))
+    if act == "fj":
+        pending.pop(uid, None)
+        await e.answer()
+        return await edit_view(e, *await fj_view())
+    if act == "fjt":
+        cfg = await forcejoin.load()
+        if not cfg.get("on") and not cfg.get("chats"):
+            return await e.answer("اول با «تنظیم» یه گپ اضافه کن", alert=True)
+        cfg["on"] = not cfg.get("on")
+        await forcejoin.save(cfg)
+        await e.answer("🟢 روشن شد" if cfg["on"] else "🔴 خاموش شد")
+        return await edit_view(e, *await fj_view())
+    if act == "fjs":
+        pending[uid] = ("fjadd",)
+        await e.answer()
+        return await bot.send_message(
+            uid, "🔗 **لینک گپ یا نام‌کاربری** رو بفرست:\nمثال: `https://t.me/XTM_SELF` یا `@XTM_SELF`\n"
+                 "(گپ/کانال باید عمومی و دارای یوزرنیم باشه)\nلغو: /start")
+    if act == "fjd":
+        cfg = await forcejoin.load()
+        i = int(parts[2])
+        if 0 <= i < len(cfg["chats"]):
+            cfg["chats"].pop(i)
+            if not cfg["chats"]:
+                cfg["on"] = False
+            await forcejoin.save(cfg)
+            forcejoin.forget()
+        await e.answer("🗑 حذف شد")
+        return await edit_view(e, *await fj_view())
+    if act == "fjc":
+        cfg = await forcejoin.load()
+        cfg["chats"], cfg["on"] = [], False
+        await forcejoin.save(cfg)
+        forcejoin.forget()
+        await e.answer("🧹 پاک شد")
+        return await edit_view(e, *await fj_view())
     if act == "users":
         await e.answer()
         return await edit_view(e, *await users_view(int(parts[2])))
@@ -1488,6 +1652,7 @@ async def main():
         except Exception:
             log.exception("failed to start self for %s", uid)
     asyncio.create_task(billing_loop())
+    asyncio.create_task(fj_loop())
     log.info("running: %s selfs", len(selfbot.clients))
     await bot.run_until_disconnected()
 

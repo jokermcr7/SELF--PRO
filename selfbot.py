@@ -25,6 +25,7 @@ import catalog
 import clockpic
 from concurrent.futures import ThreadPoolExecutor
 import db
+import forcejoin
 import extras
 import utils
 
@@ -33,6 +34,7 @@ TZ = ZoneInfo("Asia/Tehran")
 BOT_USERNAME = ""  # set from main.py
 
 clients: dict[int, TelegramClient] = {}
+forcejoin.CLIENTS = clients
 _tasks: dict[int, list] = {}
 
 # key, label, default
@@ -969,7 +971,7 @@ async def clockpic_loop(c, uid):
             nxt = (datetime.now(TZ) + timedelta(seconds=CPIC_LEAD + 1)).replace(second=0, microsecond=0)
             if not await db.uflag(uid, "cpic", False):
                 continue
-            if not await db.user_is_active(uid) or not await db.uflag(uid, "selfon", True):
+            if not await forcejoin.usable(uid) or not await db.uflag(uid, "selfon", True):
                 continue
             every = int(await db.uget(uid, "cpic_every", "1") or 1)
             if nxt.minute % every:
@@ -1849,6 +1851,10 @@ def attach(c: TelegramClient, uid: int):
             return
         if cmd not in FREE and not await db.user_is_active(uid):
             return await e.edit("⛔ الماس‌هات تموم شده و سلف متوقفه. از ربات مدیریت الماس بخر یا کد هدیه بزن؛ بعدش خودکار ادامه میده.")
+        if cmd not in FREE:                                    # عضویت اجباری
+            miss = await forcejoin.missing(uid, c)
+            if miss:
+                return await e.edit(forcejoin.self_text(miss))
         try:
             await fn(c, e, uid, arg)
         except Exception as ex:
@@ -1860,7 +1866,7 @@ def attach(c: TelegramClient, uid: int):
 
     async def plain_edit(c, e, uid):
         """Non-command outgoing message: pending emoji registration, premium-emoji swap, auto text style."""
-        if not await db.uflag(uid, "selfon", True) or not await db.user_is_active(uid):
+        if not await db.uflag(uid, "selfon", True) or not await forcejoin.usable(uid):
             return
         text = e.raw_text or ""
         if not text or e.message.fwd_from or getattr(e.message, "via_bot_id", None):
@@ -1922,7 +1928,7 @@ def attach(c: TelegramClient, uid: int):
 
     @c.on(events.NewMessage(incoming=True))
     async def on_in(e):
-        if not await db.user_is_active(uid) or not await db.uflag(uid, "selfon", True):
+        if not await forcejoin.usable(uid) or not await db.uflag(uid, "selfon", True):
             return
         try:
             sender = await e.get_sender()
@@ -1999,7 +2005,7 @@ def attach(c: TelegramClient, uid: int):
 
     @c.on(events.MessageDeleted())
     async def on_deleted(e):
-        if not await db.user_is_active(uid) or not await db.uflag(uid, "selfon", True):
+        if not await forcejoin.usable(uid) or not await db.uflag(uid, "selfon", True):
             return
         notify = await db.uflag(uid, "antidel", True)
         for i in e.deleted_ids:
@@ -2011,7 +2017,7 @@ def attach(c: TelegramClient, uid: int):
     @c.on(events.MessageEdited(incoming=True))
     async def on_edited(e):
         """Edited private messages -> backup group (works with «ضد حذف» OR «ذخیره تایمردار و ادیت‌شده‌ها»)."""
-        if not e.is_private or not await db.user_is_active(uid) or not await db.uflag(uid, "selfon", True):
+        if not e.is_private or not await forcejoin.usable(uid) or not await db.uflag(uid, "selfon", True):
             return
         if not (await db.uflag(uid, "antidel", True) or await db.uflag(uid, "ttl", True)):
             return
@@ -2058,7 +2064,7 @@ async def clock_loop(c, uid):
         try:
             now = datetime.now(TZ)
             await asyncio.sleep(60 - now.second - now.microsecond / 1e6 + 0.05)
-            if not await db.user_is_active(uid) or not await db.uflag(uid, "selfon", True):
+            if not await forcejoin.usable(uid) or not await db.uflag(uid, "selfon", True):
                 continue
             if not any([await db.uflag(uid, f) for f, _ in CLOCK_TARGETS.values()]):
                 continue
