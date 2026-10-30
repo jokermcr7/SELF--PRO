@@ -61,6 +61,11 @@ def _ffmpeg():
         return None
 
 
+def ffmpeg_kind():
+    """'system' (apt/nix ffmpeg, dynamic) or 'static' (imageio's bundled build - can segfault on DNS in some containers)."""
+    return "system" if shutil.which("ffmpeg") else "static"
+
+
 def pick_preset(word):
     k = _n(word)
     k = ALIAS.get(k, k)
@@ -255,9 +260,11 @@ async def _supervisor(c, uid, st):
                 break
             ran = time.time() - t0
             st["error"] = err.decode("utf-8", "ignore")[-300:].strip()
+            if proc.returncode == -11:
+                fails += 3                                              # segfault: retrying will not help
             if ran < 30:
                 fails += 1
-                if not force and not st["encode"]:
+                if not force and not st["encode"] and proc.returncode != -11:
                     force = True                                      # copy failed fast -> probably not H.264: re-encode
             else:
                 fails = 0
@@ -308,8 +315,11 @@ def _diag(st):
     p = st.get("proc")
     alive = p is not None and p.returncode is None
     pr = st.get("prog") or {}
-    line = (f"ffmpeg {'روشن' if alive else 'خاموش (کد ' + str(getattr(p, 'returncode', '?')) + ')'}"
+    line = (f"ffmpeg[{ffmpeg_kind()}] {'روشن' if alive else 'خاموش (کد ' + str(getattr(p, 'returncode', '?')) + ')'}"
             f" | ارسال‌شده: {_sent_bytes(st) // 1024} KB | سرعت: {pr.get('speed', '-')}")
+    if getattr(p, "returncode", None) == -11:
+        line += ("\n💥 ffmpeg کرش کرد (SIGSEGV)؛ معمولاً یعنی ffmpegِ استاتیکِ همراه برنامه روی این سرور کار نمی‌کنه. "
+                 "ffmpeg سیستمی نصب کن: توی Variables ریلوی `RAILPACK_DEPLOY_APT_PACKAGES=ffmpeg` و `NIXPACKS_APT_PKGS=ffmpeg` رو بذار و Redeploy بزن.")
     last = list(st.get("log") or [])[-3:]
     if last:
         line += "\nخطای ffmpeg: " + " | ".join(last)
@@ -399,6 +409,8 @@ async def _start(c, e, uid, rest):
         return await e.edit("⏳ ظرفیت لایوهای سرور پره؛ چند دقیقه‌ی دیگه امتحان کن")
     if not _ffmpeg():
         return await e.edit("⚠️ ffmpeg روی سرور نیست")
+    if ffmpeg_kind() == "static":
+        log.warning("live: using the bundled static ffmpeg (system ffmpeg recommended)")
     src = DEFAULT
     if rest:
         src = pick_preset(rest) or (rest if rest.startswith(("http", "rtmp", "rtsp", "udp", "srt")) else None)
