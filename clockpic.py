@@ -14,6 +14,7 @@ from datetime import datetime
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 S = 800
+OUT = 1280           # uploaded size (profile photos are stored/zoomed up to this)
 _FD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fonts")
 _SYS = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "DejaVuSans-Bold.ttf", "Arial.ttf"]
 
@@ -26,6 +27,9 @@ COLORS = {
     "gold": ("طلایی", "🟡", (255, 196, 40)),
     "pink": ("صورتی", "🩷", (255, 92, 172)),
     "cyan": ("فیروزه‌ای", "🩵", (28, 226, 236)),
+    "orange": ("نارنجی", "🟠", (255, 132, 24)),
+    "white": ("سفید", "⚪", (212, 220, 240)),
+    "dark": ("دارک", "⚫", (150, 158, 184)),      # black glass look: extra-dark photo + cool silver accent
 }
 COLOR_ORDER = list(COLORS)
 
@@ -166,12 +170,12 @@ def make_base(raw, col):
     return im.convert("RGBA")
 
 
-def normalize_base(raw, size=640):
+def normalize_base(raw, size=1024):
     """Square-crop + shrink an uploaded photo so it is cheap to store (JPEG bytes)."""
     im = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
     im = ImageOps.fit(im, (size, size), Image.LANCZOS)
     bio = io.BytesIO()
-    im.save(bio, "JPEG", quality=86)
+    im.save(bio, "JPEG", quality=95, subsampling=0)
     return bio.getvalue()
 
 
@@ -938,7 +942,8 @@ def _emblem_img(size):
     """The flag emblem (gold lion, sun, crown, laurel wreath, bow) fitted into a size x size box."""
     im = _emblem_src()
     k = size / max(im.size)
-    return im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
+    out = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
+    return out.filter(ImageFilter.UnsharpMask(radius=1.1, percent=60, threshold=2))
 
 
 def _emblem_draw(img, size, pos, c, glow=0.8, glow_r=26):
@@ -1066,13 +1071,13 @@ def _lionsun(img, c, hm, date, now):
     """شیر و خورشید بلوری ۱: crystal emblem on top, frosted glass clock plate with a minute bar below."""
     img = _dim(img, 0.5)
     img = _god_rays(img, S / 2, 250, c, count=14, alpha=26, seed=now.minute // 5)
-    pos, size = ((S - 520) // 2, 4), 520
+    pos, size = ((S - 620) // 2, -52), 620
     img = _emblem_draw(img, size, pos, c)
-    img = _star(img, S / 2, 20, 26)
+    img = _star(img, S / 2, 30, 26)
     img = _crystal_panel(img, (150, 536, S - 150, 696), 44, c)
-    f = _fit("Poppins-Bold.ttf", hm, 400, 120)
-    img = plain_text(img, hm, (S / 2, 590), f, (255, 255, 255, 255))
-    img = plain_text(img, date, (S / 2, 646), _font("Poppins-Medium.ttf", 28), (255, 255, 255, 225), shadow=False)
+    f = _fit("Poppins-Bold.ttf", hm, 400, 104)
+    img = plain_text(img, hm, (S / 2, 586), f, (255, 255, 255, 255))
+    img = plain_text(img, date, (S / 2, 650), _font("Poppins-Medium.ttf", 26), (255, 255, 255, 225), shadow=False)
     bar = _layer()
     d = ImageDraw.Draw(bar)
     x0, x1, y = 200, S - 200, 676
@@ -1086,7 +1091,7 @@ def _lionsun(img, c, hm, date, now):
 def _lionsun2(img, c, hm, date, now):
     """شیر و خورشید بلوری ۲: crystal emblem on the left, big stacked glass digits next to it."""
     img = _dim(img, 0.5)
-    pos, size = (-4, 150), 440
+    pos, size = (-20, 112), 520
     img = _emblem_draw(img, size, pos, c)
     img = _star(img, pos[0] + size * 0.5, pos[1] + 12, 22)
     hh, mm = hm.split(":")
@@ -1133,12 +1138,12 @@ def _lionsun3(img, c, hm, date, now):
         hd = _layer()
         ImageDraw.Draw(hd).ellipse((hx - 13, hy - 13, hx + 13, hy + 13), fill=(255, 255, 255, 255))
         img = _over(_glow_from_mask(img, hd.split()[3], c, 10, 1.6, 2), hd)
-    pos, size = (200, 104), 400
+    pos, size = (170, 70), 460
     img = _emblem_draw(img, size, pos, c)
     img = _star(img, S / 2, pos[1] + 10, 20)
-    f = _fit("Poppins-Bold.ttf", hm, 300, 92)
-    img = _crystal_text(img, hm, (cx, 590), f, c, depth=3, frost=0.1, tintk=0.28, glow=1.0)
-    return plain_text(img, date, (cx, 646), _font("Poppins-Medium.ttf", 28), (255, 255, 255, 230), shadow=False)
+    f = _fit("Poppins-Bold.ttf", hm, 300, 84)
+    img = _crystal_text(img, hm, (cx, 584), f, c, depth=3, frost=0.1, tintk=0.28, glow=1.0)
+    return plain_text(img, date, (cx, 650), _font("Poppins-Medium.ttf", 28), (255, 255, 255, 230), shadow=False)
 
 
 def _lionsun4(img, c, hm, date, now):
@@ -1148,7 +1153,7 @@ def _lionsun4(img, c, hm, date, now):
     ImageDraw.Draw(halo).ellipse((S / 2 - 330, 20, S / 2 + 330, 560), fill=c + (120,))
     img = _over(img, halo.filter(ImageFilter.GaussianBlur(90)))
     img = _god_rays(img, S / 2, 300, c, count=22, alpha=40, seed=now.minute // 3)
-    pos, size = ((S - 580) // 2, 0), 580
+    pos, size = ((S - 700) // 2, -86), 700
     img = _emblem_draw(img, size, pos, c)
     rnd = random.Random(now.hour * 60 + now.minute)
     for _ in range(7):
@@ -1564,8 +1569,136 @@ STYLES += [("lionsun", "🦁 شیر و خورشید ۱"), ("lionsun2", "🦁 ش�
            ("roman", "آنالوگ رومی لوکس")]
 _DRAW.update({"lionsun": _lionsun, "lionsun2": _lionsun2, "crown": _crown, "shield": _shield, "cinema": _cinema,
               "polaroid": _polaroid, "radar": _radar, "hexa": _hexa, "ember": _ember, "roman": _roman})
+
+# ------------------------------------------------------------------ the bloody red hand (دست قرمز)
+@functools.lru_cache(maxsize=1)
+def _hand_src():
+    return Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "hand.png")).convert("RGBA")
+
+
+@functools.lru_cache(maxsize=8)
+def _hand_img(h):
+    im = _hand_src()
+    out = im.resize((max(1, round(im.width * h / im.height)), h), Image.LANCZOS)
+    return out.filter(ImageFilter.UnsharpMask(radius=1.0, percent=50, threshold=2))
+
+
+def _hand_draw(img, h, center, glow_col=(255, 24, 40), glow=1.0, alpha=1.0, glow_r=30):
+    hd = _hand_img(h)
+    full = _layer()
+    full.paste(hd, (int(center[0] - hd.width / 2), int(center[1] - hd.height / 2)))
+    a = full.split()[3]
+    sh = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+    sh.putalpha(a.filter(ImageFilter.GaussianBlur(14)).point(lambda p: int(p * 0.7)))
+    img = _over(img, ImageChops.offset(sh, 6, 12))
+    if glow:
+        img = _glow_from_mask(img, a, glow_col, glow_r, glow, 1)
+    if alpha < 1:
+        full.putalpha(a.point(lambda p: int(p * alpha)))
+    img = _over(img, full)
+    lit = ImageChops.subtract(a, ImageChops.offset(a, 3, 3)).filter(ImageFilter.GaussianBlur(0.7))   # wet highlight
+    hl = Image.new("RGBA", (S, S), (255, 150, 150, 255))
+    hl.putalpha(lit.point(lambda p: int(p * 0.55 * alpha)))
+    return _over(img, hl)
+
+
+def _blood_bg(img, c, strength=0.7):
+    img = _dim(img, strength)
+    halo = _layer()
+    ImageDraw.Draw(halo).ellipse((S * .1, S * .1, S * .9, S * .9), fill=(150, 0, 14, 130))
+    return _over(img, halo.filter(ImageFilter.GaussianBlur(120)))
+
+
+def _hand1(img, c, hm, date, now):
+    """دست قرمز ۱: big hand on the left, stacked glowing digits on the right."""
+    img = _blood_bg(img, c)
+    img = _hand_draw(img, 700, (232, 392))
+    img = _palm_mark(img, (232, 392), 700)
+    hh, mm = hm.split(":")
+    f = _font("Poppins-Bold.ttf", 230)
+    img = glow_text(img, hh, (600, 262), f, (255, 30, 50), radius=18, core=(255, 255, 255))
+    img = glow_text(img, mm, (600, 490), f, (255, 30, 50), radius=18, core=(255, 215, 215))
+    lay = _layer()
+    d = ImageDraw.Draw(lay)
+    d.rounded_rectangle((470, 372, 730, 380), radius=4, fill=(255, 40, 55, 255))
+    img = _over(_glow_from_mask(img, lay.split()[3], (255, 30, 50), 8, 1.2, 1), lay)
+    return plain_text(img, date, (600, 656), _font("Poppins-Medium.ttf", 34), (255, 205, 205, 235))
+
+
+def _palm_mark(img, center, h, text="18.19"):
+    """Fixed mark '18.19' engraved into the palm like it was scratched/painted in blood: dark crimson fill,
+    wet rim-light, red glow and a few drips. Same on every render (seeded), so it always reads 18.19."""
+    cx, cy = center[0] - 0.01 * h, center[1] + 0.065 * h
+    f = _font("Poppins-Bold.ttf", int(h * 0.135))
+    m = _mask_text(text, (cx, cy), f)
+    bb = m.getbbox()
+    if not bb:
+        return img
+    rnd = random.Random(1819)
+    drips = Image.new("L", (S, S), 0)
+    dd = ImageDraw.Draw(drips)
+    n = len(text)
+    for i in range(n):
+        if i not in (1, 4):
+            continue
+        x = bb[0] + (bb[2] - bb[0]) * (i + 0.5) / n + (-2 if i == 1 else -10)
+        ln = rnd.randint(int(h * 0.04), int(h * 0.11))
+        w = max(5, int(h * 0.009))
+        dd.rounded_rectangle((x - w, bb[3] - 2, x + w, bb[3] + ln), radius=w, fill=255)
+        dd.ellipse((x - w * 1.5, bb[3] + ln - w, x + w * 1.5, bb[3] + ln + w * 2), fill=255)
+    solid = ImageChops.lighter(m, drips)
+    img = _glow_from_mask(img, solid, (255, 20, 40), 14, 0.9, 1)
+    y0, y1 = bb[1], bb[3] + int(h * 0.1)
+    strip = Image.new("RGB", (1, S))
+    strip.putdata([(int(120 - 70 * t), int(6 - 6 * t), int(22 - 12 * t)) for t in
+                   (min(1, max(0, (y - y0) / max(1, y1 - y0))) for y in range(S))])
+    ol = strip.resize((S, S)).convert("RGBA")                           # deep crimson, darker towards the drips
+    ol.putalpha(solid)
+    img = _over(img, ol)
+    rim = ImageChops.subtract(solid, ImageChops.offset(solid, 0, -3)).filter(ImageFilter.GaussianBlur(0.8))   # wet bottom rim
+    r1 = Image.new("RGBA", (S, S), (255, 120, 130, 255))
+    r1.putalpha(rim.point(lambda p: int(p * 0.95)))
+    img = _over(img, r1)
+    top = ImageChops.subtract(solid, ImageChops.offset(solid, 2, 3)).filter(ImageFilter.GaussianBlur(0.7))
+    r2 = Image.new("RGBA", (S, S), (255, 235, 235, 255))
+    r2.putalpha(top.point(lambda p: int(p * 0.75)))
+    return _over(img, r2)
+
+
+def _hand2(img, c, hm, date, now):
+    """دست قرمز ۲: big hand with the fixed 18.19 mark on the palm, live clock underneath."""
+    img = _blood_bg(img, c, 0.74)
+    img = _hand_draw(img, 620, (S / 2 - 4, 320), glow=1.2, glow_r=36)
+    img = _palm_mark(img, (S / 2 - 4, 320), 620)
+    f = _fit("Poppins-Bold.ttf", hm, 470, 120)
+    img = glow_text(img, hm, (S / 2, 694), f, (255, 30, 50), radius=16, core=(255, 255, 255))
+    return plain_text(img, date, (S / 2, 766), _font("Poppins-Medium.ttf", 30), (255, 220, 220, 235))
+
+
+def _hand3(img, c, hm, date, now):
+    """دست قرمز ۳ (ترسناک): hand fading in from the side, dripping underline and a red scan-glow."""
+    img = _blood_bg(img, c, 0.78)
+    img = _hand_draw(img, 560, (640, 250), glow=1.4, alpha=0.9, glow_r=40)
+    img = _palm_mark(img, (640, 250), 560)
+    rnd = random.Random(now.hour * 60 + now.minute)
+    lay = _layer()
+    d = ImageDraw.Draw(lay)
+    for _ in range(9):                                       # blood drops falling from the bottom bar
+        x = rnd.randint(70, 520)
+        ln = rnd.randint(18, 90)
+        d.rounded_rectangle((x, 596, x + 9, 596 + ln), radius=4, fill=(170, 8, 24, 255))
+        d.ellipse((x - 3, 596 + ln - 6, x + 12, 596 + ln + 9), fill=(170, 8, 24, 255))
+    d.rounded_rectangle((60, 570, 540, 604), radius=14, fill=(190, 10, 28, 255))
+    img = _over(img, lay)
+    f = _fit("Poppins-Bold.ttf", hm, 470, 170)
+    img = glow_text(img, hm, (300, 430), f, (255, 30, 50), radius=20, core=(255, 255, 255))
+    return plain_text(img, date, (300, 536), _font("Poppins-Medium.ttf", 34), (255, 215, 215, 240))
+
+
 STYLES += [("lionsun3", "🦁 شیر و خورشید ۳"), ("lionsun4", "🦁 شیر و خورشید ۴")]
 _DRAW.update({"lionsun3": _lionsun3, "lionsun4": _lionsun4})
+STYLES += [("hand1", "🩸 دست قرمز ۱"), ("hand2", "🩸 دست قرمز ۲"), ("hand3", "🩸 دست قرمز ۳")]
+_DRAW.update({"hand1": _hand1, "hand2": _hand2, "hand3": _hand3})
 
 
 def style_key(v):
@@ -1591,8 +1724,13 @@ def render(raw, style, color, now=None) -> bytes:
     now = now or datetime.now()
     ck = color_key(color)
     col = COLORS[ck][2]
-    img = make_base(raw, col)
+    img = make_base(raw, (26, 28, 40) if ck == "dark" else col)
+    if ck == "dark":
+        img = _over(img, Image.new("RGBA", (S, S), (0, 0, 0, 150)))
     img = _DRAW[style_key(style)](img, col, now.strftime("%H:%M"), _date_text(now), now)
+    img = img.convert("RGB")
+    if OUT != S:                                            # high-res output: zooming in stays smooth
+        img = img.resize((OUT, OUT), Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=1.2, percent=45, threshold=3))
     bio = io.BytesIO()
-    img.convert("RGB").save(bio, "JPEG", quality=92, optimize=True)
+    img.save(bio, "JPEG", quality=96, subsampling=0, optimize=True)
     return bio.getvalue()
