@@ -10,8 +10,8 @@ Commands (game group):  بازی [مبلغ] | تاس | سکه | کازینو | �
 Everywhere:             موجودی  |  انتقال [مبلغ] (ریپلای)  |  برترین
 Admin:                  تنظیم بازی
 
-FAIR PLAY (v1.7): every outcome is drawn from random.org (true atmospheric randomness; falls back to the OS
-cryptographic generator if random.org is unreachable). Every player / the bot has exactly the same win chance:
+FAIR PLAY (v1.7): coin / «بازی 20» outcomes come from random.org (falls back to the OS crypto generator). Dice and slot use the
+REAL animated Telegram dice (uniform server randomness) so everyone can watch the spin. Every player / the bot has exactly the same win chance:
   تاس زوج/فرد 50% ×2  |  حدس دقیق 1/6 ×6  |  سکه با ربات 50% ×2  |  کازینو تک‌نفره 50% ×2  |  بازی 20 با ربات 50%
   بازی دو/سه‌نفره، دو نفره‌ی سکه و کازینو: فقط بین بازیکن‌هاست و FEE درصد مالیات می‌گیره؛ «بازی 20» با ربات: ۵۰٪ برد / ۵۰٪ باخت (BOT_WIN_PERCENT).
 """
@@ -173,7 +173,7 @@ async def recover(bot):
 HELP = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎮 راهنمای بازی‌ها</b> (فقط توی گپ مخصوص بازی)\n\n"
         "🎲 <code>بازی 20</code> — دو/سه‌نفره؛ پنل باز میشه و می‌پرسه دونفره یا سه‌نفره (دونفره با ربات هم میشه 🤖)\n"
         "🎲 <code>تاس</code> — زوج یا فرد (×2) یا حدس دقیق عدد (×6)\n"
-        "🎰 <code>کازینو</code> — مبلغ ورودی + تک‌نفره با ربات (۵۰٪/۵۰٪، ×2) یا دونفره\n"
+        "🎰 <code>کازینو</code> — مبلغ ورودی + تک‌نفره (تو و ربات هر دو می‌چرخونین، ×2) یا دونفره\n"
         "🪙 <code>سکه</code> — شیر یا خط با ربات (×2) یا با یه کاربر\n🍀 همه‌ی قرعه‌ها از random.org و شانس همه برابره\n"
         "📋 <code>بازی ها</code> — منوی بازی‌ها\n\n"
         "💎 <code>موجودی</code> | <code>برترین</code> | <code>انتقال 25</code> (ریپلای)\n"
@@ -270,13 +270,15 @@ def register(bot, admin_ids):
 
         # casino
         solo = P["n"] == 1
+        rules = "(۷۷۷ > سه‌تا مثل هم > دوتا مثل هم > هیچی > BAR BAR BAR). مساوی شد دوباره می‌چرخن."
         if solo:
-            t = (bet_head(P) + "👤 حالت: <b>تک‌نفره</b> (تو و ربات)\n\n<b>🎁 قوانین</b>\n"
-                 "شانس برد تو و ربات دقیقاً <b>۵۰٪ / ۵۰٪</b> (قرعه‌ی واقعی از random.org)\n"
-                 f"🏆 اگه ببری: <b>×{CASINO_MULT:g}</b> ({pay_of(bet, CASINO_MULT):,} 💎)\n😢 اگه ببازی: ورودی می‌سوزه")
+            t = (bet_head(P) + "👤 حالت: <b>تک‌نفره</b> (تو و ربات)\n\nاول تو دستگاه رو می‌چرخونی، بعد ربات؛ "
+                 f"نتیجه‌ی بهتر برنده‌ست {rules}\n"
+                 "شانس برد تو و ربات دقیقاً <b>برابره</b> 🍀\n"
+                 f"🏆 اگه ببری: <b>×{CASINO_MULT:g}</b> ({pay_of(bet, CASINO_MULT):,} 💎) | باخت: ورودی می‌سوزه")
         else:
-            t = (bet_head(P) + "👥 حالت: <b>دونفره</b>\n\nهر دو نفر شانس برابر (۵۰٪ / ۵۰٪) دارن؛ قرعه از random.org گرفته میشه.\n"
-                 f"🏆 جایزه‌ی برنده: <b>{prize_pvp(bet):,} 💎</b> (مالیات {FEE}٪)")
+            t = (bet_head(P) + "👥 حالت: <b>دونفره</b>\n\nهر دو نفر یه بار دستگاه رو می‌چرخونن؛ نتیجه‌ی بهتر برنده‌ست "
+                 f"{rules}\n🏆 جایزه‌ی برنده: <b>{prize_pvp(bet):,} 💎</b> (مالیات {FEE}٪)")
         rows = [[bet_btn],
                 [btn(ck(solo) + "👤 تک‌نفره", f"gp:{pid}:sn:1", GREEN), btn(ck(not solo) + "👥 دونفره", f"gp:{pid}:sn:2", GREEN)],
                 [btn("🎰 بچرخون!" if solo else "🎰 ساخت میز دونفره", f"gp:{pid}:go", GREEN)], [cancel]]
@@ -491,13 +493,16 @@ def register(bot, admin_ids):
         L = lobbies[lid]
         try:
             players = L["players"]
-            await edit_lobby(L, lobby_text(L, "\n🎰 قرعه‌کشی ..."), kb([]))
-            winner = (await rnd_ints(1, 0, 1))[0]
-            await asyncio.sleep(2.5)
-            res = []
-            for i, (uid_, nm) in enumerate(players):
-                win_i = i == winner
-                res.append((nm, reels_for(win_i), 0, "🏆 برد" if win_i else "😢 باخت", 0))
+            res, winner = [], None
+            for _rnd in range(4):
+                res = []
+                for uid_, nm in players:
+                    await edit_lobby(L, lobby_text(L, f"\n⏳ نوبت <b>{esc(nm)}</b> ..."), kb([]))
+                    v = await roll(L["chat"], "🎰", L["msg"], 4.4)
+                    res.append((nm,) + slot_eval(v))
+                if res[0][4] != res[1][4]:
+                    winner = 0 if res[0][4] > res[1][4] else 1
+                    break
             lines = "\n".join(f"{'🏆' if winner == i else '▫️'} {esc(nm)}: {reels_txt(r)} — {label}"
                               for i, (nm, r, _m, label, _rk) in enumerate(res))
             head = f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎰 نتیجه‌ی کازینو دونفره</b>\n💎 ورودی: {L['bet']:,}\n\n{lines}\n\n"
@@ -542,8 +547,7 @@ def register(bot, admin_ids):
         try:
             await botapi.edit_banner(P["chat"], P["msg"], head + "⏳ در حال بازی ...", kb([]))
             if g == "dice":
-                v = (await rnd_ints(1, 1, 6))[0]
-                await asyncio.sleep(1.8)
+                v = await roll(P["chat"], "🎲", P["msg"], 3.6)
                 mode = P["mode"]
                 if mode == "exact":
                     win, mult, mine = v == P["pick"], DICE_EXACT_MULT, f"حدس دقیق: {P['pick']}"
@@ -553,7 +557,7 @@ def register(bot, admin_ids):
                 pay = pay_of(bet, mult) if win else 0
                 bal = await db.add(uid, pay, "dice_win") if pay else await db.balance(uid)
                 line = f"🏆 بردی! <b>+{pay - bet:,}</b> 💎" if win else f"💥 باختی! <b>-{bet:,}</b> 💎"
-                body = f"🎯 انتخاب تو: {mine}\n🎲 آمد: <b>{DICE_FACE[v - 1]} {v}</b> ({'زوج' if v % 2 == 0 else 'فرد'})\n{line}"
+                body = f"🎯 انتخاب تو: {mine}\n🎲 آمد: <b>{v}</b> ({'زوج' if v % 2 == 0 else 'فرد'})\n{line}"
             elif g == "coin":
                 res = P["pick"] if (await rnd_ints(1, 1, 10000))[0] <= int(round(COIN_WIN_P * 10000)) else ("t" if P["pick"] == "h" else "h")
                 nm = lambda x: "شیر 🦁" if x == "h" else "خط ✍️"
@@ -563,14 +567,28 @@ def register(bot, admin_ids):
                     bal, line = await db.balance(uid), f"💥 باختی! <b>-{bet:,}</b> 💎"
                 body = f"🪙 انتخاب تو: {nm(P['pick'])}\n🪙 آمد: <b>{nm(res)}</b>\n{line}"
             else:  # casino, solo
-                win = await rnd_bool()
-                await asyncio.sleep(2.0)
-                reels = reels_for(win)
-                label = "🏆 بردی!" if win else "😢 باختی"
-                pay = pay_of(bet, CASINO_MULT) if win else 0
+                res_txt, outcome = "", None
+                for _rnd in range(4):                     # tie -> both spin again (max 4 rounds), then refund
+                    await botapi.edit_banner(P["chat"], P["msg"], head + "🎰 نوبت <b>تو</b> ...", kb([]))
+                    mv = await roll(P["chat"], "🎰", P["msg"], 4.4)
+                    await botapi.edit_banner(P["chat"], P["msg"], head + "🎰 نوبت <b>ربات</b> ...", kb([]))
+                    bv = await roll(P["chat"], "🎰", P["msg"], 4.4)
+                    mr, _m1, mlabel, mrank = slot_eval(mv)
+                    br, _m2, blabel, brank = slot_eval(bv)
+                    res_txt = f"👤 تو: {reels_txt(mr)} — {mlabel}\n🤖 ربات: {reels_txt(br)} — {blabel}\n"
+                    if mrank != brank:
+                        outcome = mrank > brank
+                        break
+                reels = None
+                if outcome is True:
+                    pay, label = pay_of(bet, CASINO_MULT), "🏆 بردی!"
+                elif outcome is False:
+                    pay, label = 0, "😢 باختی"
+                else:
+                    pay, label = bet, "🤝 چند بار مساوی شد؛ ورودی برگشت"
                 bal = await db.add(uid, pay, "casino_win") if pay else await db.balance(uid)
                 net = pay - bet
-                body = f"🎰 {reels_txt(reels)}\n{label}\n" + (f"🏆 <b>{net:+,}</b> 💎" if net > 0 else (
+                body = f"{res_txt}{label}\n" + (f"🏆 <b>{net:+,}</b> 💎" if net > 0 else (
                     "🤝 شرطت برگشت" if net == 0 else f"💥 <b>{net:,}</b> 💎"))
             await finish(P, head + body + f"\n\n💎 موجودی: <b>{db.fmt(bal)}</b>")
         except Exception:
