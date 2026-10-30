@@ -2,7 +2,7 @@
 
 render(raw_base_photo_bytes | None, style, color, now) -> JPEG bytes (800x800)
 
-29 designs x 7 colors. The base photo is the user's own profile picture (or a gradient if there is none);
+24 designs x 9 colors. The base photo is the user's own profile picture (or a gradient if there is none);
 every design is drawn ON TOP of it, so the photo stays visible.
 """
 import functools
@@ -29,14 +29,13 @@ COLORS = {
     "cyan": ("فیروزه‌ای", "🩵", (28, 226, 236)),
     "orange": ("نارنجی", "🟠", (255, 132, 24)),
     "white": ("سفید", "⚪", (212, 220, 240)),
-    "dark": ("دارک", "⚫", (150, 158, 184)),      # black glass look: extra-dark photo + cool silver accent
 }
 COLOR_ORDER = list(COLORS)
 
 # key -> Persian name
 STYLES = [
     ("neon", "نئون"), ("stack", "دو طبقه"), ("ring", "حلقه"), ("analog", "آنالوگ"),
-    ("glass", "شیشه‌ای"), ("hud", "هولوگرام"), ("capsule", "کپسول"), ("minimal", "مینیمال"),
+    ("hud", "هولوگرام"),
 ]
 
 
@@ -264,26 +263,6 @@ def _analog(img, c, hm, date, now):
     return plain_text(img, hm, (cx, cy + 150), _font("Poppins-Bold.ttf", 54), (255, 255, 255, 235))
 
 
-def _glass(img, c, hm, date, now):
-    img = _dim(img, 0.12, vignette=False)
-    box = (56, 462, S - 56, S - 64)
-    m = _round_mask(box, 54)
-    blur = img.filter(ImageFilter.GaussianBlur(30))
-    img.paste(blur, (0, 0), m)
-    lay = _layer()
-    d = ImageDraw.Draw(lay)
-    d.rounded_rectangle(box, radius=54, fill=(255, 255, 255, 52), outline=(255, 255, 255, 120), width=3)
-    d.rounded_rectangle((box[0] + 3, box[1] + 3, box[2] - 3, box[1] + 90), radius=48, fill=(255, 255, 255, 18))
-    img = _over(img, lay)
-    f = _fit("Poppins-Bold.ttf", hm, 560, 210)
-    img = plain_text(img, hm, (S / 2, 570), f, (255, 255, 255, 255))
-    bar = _layer()
-    ImageDraw.Draw(bar).rounded_rectangle((S / 2 - 90, 662, S / 2 + 90, 672), radius=5, fill=c + (255,))
-    img = _glow_from_mask(img, bar.split()[3], c, 8, 1.2, 1)
-    img = _over(img, bar)
-    return plain_text(img, date, (S / 2, 708), _font("Poppins-Medium.ttf", 40), (255, 255, 255, 235))
-
-
 def _hud(img, c, hm, date, now):
     img = _dim(img, 0.4)
     ss = _SS()
@@ -314,50 +293,6 @@ def _hud(img, c, hm, date, now):
     fm = _font("DejaVuSansMono-Bold.ttf", 32)
     img = plain_text(img, "LIVE", (ins + 52, ins + 34), fm, tint(c, 0.6) + (255,), anchor="lm", shadow=False)
     return plain_text(img, f"TEHRAN  {date}", (cx, S - ins - 36), fm, tint(c, 0.6) + (255,), shadow=False)
-
-
-def _capsule(img, c, hm, date, now):
-    img = _dim(img, 0.1, vignette=False)
-    box = (S / 2 - 270, 560, S / 2 + 270, 706)
-    sh = Image.new("RGBA", (S, S), (0, 0, 0, 255))
-    sh.putalpha(_round_mask((box[0] + 6, box[1] + 14, box[2] + 6, box[3] + 14), 73).filter(ImageFilter.GaussianBlur(18)).point(lambda p: int(p * 0.65)))
-    img = _over(img, sh)
-    grad = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(grad)
-    c1, c2 = tint(c, 0.12), shade(c, 0.35)
-    for x in range(int(box[0]), int(box[2])):
-        t = (x - box[0]) / (box[2] - box[0])
-        gd.line([(x, box[1]), (x, box[3])], fill=tuple(int(c1[i] * (1 - t) + c2[i] * t) for i in range(3)) + (255,))
-    grad.putalpha(_round_mask(box, 73))
-    img = _over(img, grad)
-    hi = _layer()
-    ImageDraw.Draw(hi).rounded_rectangle((box[0] + 8, box[1] + 6, box[2] - 8, box[1] + 62), radius=30, fill=(255, 255, 255, 38))
-    img = _over(img, hi)
-    ss = _SS()                                               # little clock icon
-    ix, iy, ir = box[0] + 82, (box[1] + box[3]) / 2, 36
-    ss.d.ellipse(ss.xy(ix - ir, iy - ir, ix + ir, iy + ir), outline=(255, 255, 255, 255), width=10)
-    ss.d.line(ss.xy(ix, iy, ix, iy - 22), fill=(255, 255, 255, 255), width=10)
-    ss.d.line(ss.xy(ix, iy, ix + 16, iy + 8), fill=(255, 255, 255, 255), width=10)
-    img = _over(img, ss.done())
-    f = _fit("Poppins-Bold.ttf", hm, 340, 118)
-    img = plain_text(img, hm, (S / 2 + 56, (box[1] + box[3]) / 2 - 2), f, (255, 255, 255, 255), shadow=False)
-    return plain_text(img, date, (S / 2, 752), _font("Poppins-Medium.ttf", 36), (255, 255, 255, 235))
-
-
-def _minimal(img, c, hm, date, now):
-    g = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(g)
-    for y in range(int(S * 0.42), S):
-        t = (y - S * 0.42) / (S * 0.58)
-        gd.line([(0, y), (S, y)], fill=(0, 0, 0, int(215 * t ** 1.4)))
-    img = _over(img, g)
-    f = _fit("Poppins-Light.ttf", hm, S - 150, 230)
-    img = plain_text(img, hm, (70, 676), f, (255, 255, 255, 255), anchor="ls")
-    bar = _layer()
-    ImageDraw.Draw(bar).rounded_rectangle((72, 704, 72 + 150, 716), radius=6, fill=c + (255,))
-    img = _glow_from_mask(img, bar.split()[3], c, 7, 1.1, 1)
-    img = _over(img, bar)
-    return plain_text(img, date, (70, 758), _font("Poppins-Medium.ttf", 38), (255, 255, 255, 215), anchor="ls")
 
 
 # ------------------------------------------------------------------ v18: extra designs
@@ -481,41 +416,6 @@ def _led(img, c, hm, date, now):
     hd.rectangle((0, 0, 0, 0))
     img = plain_text(img, date, (S / 2, 640), _font("DejaVuSansMono-Bold.ttf", 40), tint(c, 0.5) + (255,), shadow=False)
     return img
-
-
-def _synth(img, c, hm, date, now):
-    img = _dim(img, 0.35, vignette=False)
-    top, bot = _hue(c, -0.08, 0.95, 0.35), (10, 4, 28)
-    bg = _vgrad(S, S, top, bot).convert("RGBA")
-    bg.putalpha(Image.new("L", (S, S), 190))
-    img = _over(img, bg)
-    sun_c1, sun_c2 = (255, 214, 64), _hue(c, 0, 1.0, 1.0)
-    ss = _SS()
-    cx, cy, r = S / 2, 330, 210
-    sun = _vgrad(S, S, sun_c1, sun_c2).convert("RGBA")
-    mask = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(mask).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
-    md = ImageDraw.Draw(mask)
-    for i in range(8):                                        # stripes cut out of the lower half
-        yy = cy + 20 + i * 24
-        md.rectangle((0, yy, S, yy + 3 + i * 2), fill=0)
-    sun.putalpha(mask)
-    img = _glow_from_mask(img, mask, c, 30, 1.0, 1)
-    img = _over(img, sun)
-    lay = _layer()
-    d = ImageDraw.Draw(lay)
-    hz = 560
-    d.rectangle((0, hz, S, S), fill=(8, 2, 22, 235))
-    for k in range(1, 12):
-        yy = hz + (k ** 2) * 2.1
-        d.line([(0, yy), (S, yy)], fill=c + (220,), width=3)
-    for k in range(-14, 15):
-        d.line([(S / 2 + k * 14, hz), (S / 2 + k * 90, S)], fill=c + (200,), width=3)
-    d.line([(0, hz), (S, hz)], fill=tint(c, 0.6) + (255,), width=4)
-    img = _over(img, lay)
-    f = _fit("Poppins-Bold.ttf", hm, 520, 190)
-    img = glow_text(img, hm, (cx, cy + 6), f, c, radius=12, core=(255, 255, 255))
-    return plain_text(img, date, (cx, 730), _font("Poppins-Medium.ttf", 40), (255, 255, 255, 240))
 
 
 def _gold(img, c, hm, date, now):
@@ -711,19 +611,6 @@ def _god_rays(img, cx, cy, c, count=18, length=900, alpha=46, seed=0):
     return _over(img, lay.filter(ImageFilter.GaussianBlur(6)))
 
 
-def _embers(img, c, now, n=46, area=(0, 0, S, S), seed_extra=0):
-    rnd = random.Random(now.hour * 60 + now.minute + seed_extra)
-    lay = _layer()
-    d = ImageDraw.Draw(lay)
-    for _ in range(n):
-        x, y = rnd.randint(area[0], area[2]), rnd.randint(area[1], area[3])
-        r = rnd.choice((1.6, 2.2, 2.8, 3.6))
-        d.ellipse((x - r, y - r, x + r, y + r), fill=tint(c, 0.55) + (rnd.randint(120, 255),))
-    g = lay.filter(ImageFilter.GaussianBlur(4))
-    return _over(_over(img, g), lay)
-
-
-
 # ------------------------------------------------------------------ Lion & Sun emblem (crowned, laurel wreath) as crystal
 class _EC:
     """100x100 design grid -> supersampled L masks."""
@@ -776,161 +663,6 @@ class _EC:
         return self.m.resize((self.size, self.size), Image.LANCZOS)
 
 
-def _emblem_build(size=800, ss=2):
-    """Heraldic Lion & Sun with crown, laurel wreath and bow. Returns dict of L masks:
-       fill (all solid shapes), cut (engraved lines), lion, sun, wreath, crown"""
-    layers = {}
-
-    def new(): return _EC(size, ss)
-
-    # ------------------------------------------------------------ laurel wreath + bow
-    W = new()
-    cx0, cy0, R = 50, 54.5, 33
-    for sgn in (1, -1):
-        def X(x): return x if sgn == 1 else 100 - x
-        pts = []
-        for th in range(96, 246, 6):                  # bottom -> top, left side (th in deg, y down)
-            a = math.radians(th)
-            pts.append((cx0 + R * math.cos(a), cy0 + R * math.sin(a)))
-        pts = [(X(x), y) for x, y in pts]
-        W.tube(pts, 1.1, 0.8, n=6)
-        for i, th in enumerate(range(100, 242, 9)):
-            a = math.radians(th)
-            px, py = cx0 + R * math.cos(a), cy0 + R * math.sin(a)
-            tang = th + 90                            # growth direction (towards increasing th)
-            for side, ln, wd in ((-1, 8.6, 3.5), (1, 7.2, 3.0)):
-                ang = tang + side * 42
-                ax, ay = px, py
-                if sgn == -1:
-                    ax = 100 - px
-                    ang = 180 - ang
-                W.leaf(ax, ay, ang, ln, wd)
-        a = math.radians(246)
-        tx, ty = cx0 + R * math.cos(a), cy0 + R * math.sin(a)
-        W.leaf(X(tx), ty, (336 if sgn == 1 else 180 - 336), 8, 3.2)
-    # bow
-    for sgn in (1, -1):
-        X = (lambda x: x) if sgn == 1 else (lambda x: 100 - x)
-        W.ell(X(43.5), 89.7, 6.4, 3.0, rot=(-22 if sgn == 1 else 22))
-        W.flat([(X(47), 91), (X(41.5), 96.5), (X(45), 97.2), (X(49.5), 93)])
-    W.disc(50, 90.1, 2.4)
-    layers["wreath"] = W.out()
-
-    # ------------------------------------------------------------ crown
-    C = new()
-    C.flat([(37.5, 21.5), (35.5, 11.5), (41.5, 15.5), (44, 8.5), (50, 14.5), (56, 8.5), (58.5, 15.5), (64.5, 11.5), (62.5, 21.5)])
-    C.ell(50, 12.5, 7.8, 5.4)
-    C.ell(50, 5.2, 2.6, 3.8)                         # finial tuft
-    C.disc(50, 1.6, 1.4)
-    for x, y in ((35.5, 10.4), (44, 7.4), (56, 7.4), (64.5, 10.4)):
-        C.disc(x, y, 1.7)
-    C.m = C.m
-    C.d.rounded_rectangle((C.P(36.4, 20.6) + C.P(63.6, 26.2)), radius=int(1.4 * C.k), fill=255)
-    layers["crown"] = C.out()
-    cc = new()
-    cc.line([(41, 17), (50, 19.5), (59, 17)], 0.45, 255)
-    for x in (42.5, 50, 57.5):
-        cc.disc(x, 23.4, 1.0)
-    cc.line([(46.5, 8.5), (47.2, 14)], 0.4); cc.line([(53.5, 8.5), (52.8, 14)], 0.4)
-    layers["crown_cut"] = cc.out()
-
-    # ------------------------------------------------------------ sun (behind the lion)
-    S_ = new()
-    sx, sy, sr = 64.5, 44, 6.4
-    for i in range(24):
-        a = math.radians(i * 15)
-        if i % 2 == 0:
-            p = [(sx + sr * 1.05 * math.cos(a - 0.12), sy + sr * 1.05 * math.sin(a - 0.12)), (sx + sr * 2.1 * math.cos(a), sy + sr * 2.1 * math.sin(a)),
-                 (sx + sr * 1.05 * math.cos(a + 0.12), sy + sr * 1.05 * math.sin(a + 0.12))]
-            S_.flat(p)
-        else:
-            L, Rr = [], []
-            for j in range(11):
-                t = j / 10
-                rad = sr * 1.05 + t * sr * 0.95
-                ang = a + 0.16 * math.sin(t * math.pi * 2.2)
-                w = 0.15 * (1 - t) ** 0.7 + 0.01
-                L.append((sx + rad * math.cos(ang - w), sy + rad * math.sin(ang - w)))
-                Rr.append((sx + rad * math.cos(ang + w), sy + rad * math.sin(ang + w)))
-            S_.flat(L + Rr[::-1])
-    S_.disc(sx, sy, sr)
-    layers["sun"] = S_.out()
-    sc = new()
-    sc.d.ellipse((sc.P(sx - sr * 1.16, sy - sr * 1.16) + sc.P(sx + sr * 1.16, sy + sr * 1.16)), outline=255, width=max(1, int(0.5 * sc.k)))
-    # tiny serene face
-    for e in (-1, 1):
-        sc.line([(sx + e * 2.7 - 1.3, sy - 1.3), (sx + e * 2.7, sy - 1.9), (sx + e * 2.7 + 1.3, sy - 1.3)], 0.4)
-    sc.line([(sx, sy - 1.0), (sx - 0.4, sy + 1.2), (sx + 0.6, sy + 1.4)], 0.35)
-    sc.line([(sx - 2.0, sy + 2.9), (sx, sy + 3.6), (sx + 2.0, sy + 2.9)], 0.45)
-    layers["sun_cut"] = sc.out()
-
-    # ------------------------------------------------------------ lion (frontal head, profile body facing left)
-    Ln = new()
-    # hind legs + paws
-    Ln.tube([(73.5, 59), (71, 67.5), (75, 73), (73.5, 77.5)], 8.2, 2.8)
-    Ln.ell(73, 78, 4.6, 1.3)
-    Ln.tube([(67.5, 59), (65, 68), (68.5, 73.5), (66.5, 77.5)], 8.8, 3.0)
-    Ln.ell(66, 78, 4.8, 1.3)
-    # standing front leg
-    Ln.tube([(54, 60), (54.6, 68.5), (53, 73.5), (52, 77.5)], 6.2, 2.7)
-    Ln.ell(51.4, 78, 4.3, 1.3)
-    # torso
-    Ln.poly([(49.5, 52.5), (57, 51), (65.5, 51.8), (72.5, 52), (77, 56), (76, 62), (71, 65.5), (64, 62.5), (57, 63), (51.5, 65), (47.5, 61)], n=8)
-    # tail (S curve) + tuft
-    Ln.tube([(76.5, 55), (80.5, 52), (81.2, 46.5), (79, 42.5), (75.8, 41.8)], 2.0, 1.4, n=8)
-    Ln.flat([(75.8, 42.8), (73.2, 39), (76, 39.8), (76.8, 36.2), (78.8, 40), (81, 38.6), (79.4, 43.6)])
-    # raised paw with sword, clear of the mane
-    Ln.tube([(49.5, 60.5), (43.5, 65), (36, 63), (31.5, 57.5)], 5.8, 4.0)
-    Ln.disc(30.6, 56, 3.0)
-    # mane: ring of curls around the frontal face + trailing locks over the shoulders
-    hx, hy = 47.5, 49.5
-    for ring, (rad, br, cnt, off) in enumerate(((9.0, 3.0, 19, 0), (11.4, 2.2, 22, 8))):
-        for i in range(cnt):
-            a = math.radians(off + i * 360 / cnt)
-            Ln.disc(hx + rad * math.cos(a), hy + rad * 1.02 * math.sin(a), br + 0.3 * math.sin(i * 1.9))
-    Ln.disc(hx, hy, 9.8)
-    for (x, y, r) in ((55.5, 46.5, 2.8), (59.5, 48, 2.5), (63, 50.5, 2.2), (55, 57.5, 3.2), (59, 58.5, 2.5)):
-        Ln.disc(x, y, r)
-    # ears, face
-    Ln.disc(41, 43.5, 2.2); Ln.disc(54, 43.5, 2.2)
-    Ln.ell(hx, hy + 1, 6.4, 7.2)
-    # scimitar blade (crescent), hilt in paw
-    blade = _cr([(30.4, 55), (28.2, 47), (28.4, 40), (31.5, 35), (36.5, 33)], n=10)
-    Lf, Rt = [], []
-    for i, (x, y) in enumerate(blade):
-        w = 1.05 * (1 - (i / (len(blade) - 1)) ** 1.8) + 0.1
-        Lf.append((x - w, y)); Rt.append((x + w, y))
-    Ln.flat(Lf + Rt[::-1])
-    Ln.line([(27.6, 56), (33.6, 57)], 1.1, smooth=False)
-    layers["lion"] = Ln.out()
-
-    Lc = new()
-    # face details (cut lines)
-    for e in (-1, 1):
-        ex = hx + e * 2.8
-        Lc.line([(ex - 1.5 * e, hy - 0.5), (ex, hy - 1.3), (ex + 1.6 * e, hy - 0.4), (ex, hy + 0.3), (ex - 1.5 * e, hy - 0.5)], 0.35)
-        Lc.line([(ex - 2.0, hy - 2.7), (ex + 0.2 * e, hy - 3.1), (ex + 2.0, hy - 2.4)], 0.4)
-    Lc.line([(hx, hy - 1.5), (hx, hy + 2.6)], 0.45)                      # nose bridge
-    Lc.flat([(hx - 1.9, hy + 2.5), (hx + 1.9, hy + 2.5), (hx, hy + 4.0)])  # nose
-    Lc.line([(hx, hy + 4), (hx, hy + 5.3)], 0.4)
-    Lc.line([(hx - 2.8, hy + 5.6), (hx - 1.1, hy + 5.1), (hx, hy + 5.0), (hx + 1.1, hy + 5.1), (hx + 2.8, hy + 5.6)], 0.38)
-    Lc.line([(hx - 2.0, hy + 6.6), (hx, hy + 7.2), (hx + 2.0, hy + 6.6)], 0.38)
-    for e in (-1, 1):                                                    # whisker dots
-        for (dx, dy) in ((2.2, 4.2), (3.2, 5.0), (2.0, 5.4)):
-            Lc.disc(hx + e * dx, hy + dy, 0.28)
-    # mane curl lines
-    for a0 in range(0, 360, 36):
-        a = math.radians(a0 + 6)
-        Lc.line([(hx + 7.6 * math.cos(a), hy + 7.8 * math.sin(a)), (hx + 9.6 * math.cos(a + 0.12), hy + 9.8 * math.sin(a + 0.12))], 0.32)
-    # body / leg details
-    Lc.line([(58, 55), (60, 60), (58, 63)], 0.35); Lc.line([(67.5, 54), (70.5, 59), (68.5, 64)], 0.4)
-    Lc.line([(54, 63), (54.6, 67)], 0.3)
-    layers["lion_cut"] = Lc.out()
-    return layers
-
-
-
-
 # ------------------------------------------------------------------ the REAL Lion & Sun emblem (from the reference flag image)
 @functools.lru_cache(maxsize=1)
 def _emblem_src():
@@ -973,28 +705,6 @@ def _emblem_draw(img, size, pos, c, glow=0.8, glow_r=26):
         hl.putalpha(lit.point(lambda p: int(p * 0.7)))
         img = _over(img, hl)
     return img
-
-
-@functools.lru_cache(maxsize=6)
-def _emblem(size):
-    return _emblem_build(size)
-
-
-def _full(m, pos):
-    f = Image.new("L", (S, S), 0)
-    f.paste(m, pos)
-    return f
-
-
-def _emblem_shape(size, pos):
-    """Solid emblem as one L mask: the sun is cut away where the lion overlaps it, details are engraved gaps."""
-    ly = _emblem(size)
-    k = max(1, int(round(size / 800 * 4))) * 2 + 1
-    lion, sun, wreath, crown = (_full(ly[n], pos) for n in ("lion", "sun", "wreath", "crown"))
-    sun2 = ImageChops.subtract(sun, lion.filter(ImageFilter.MaxFilter(k)))
-    solid = ImageChops.lighter(ImageChops.lighter(sun2, lion), ImageChops.lighter(wreath, crown))
-    cut = ImageChops.lighter(ImageChops.lighter(_full(ly["lion_cut"], pos), _full(ly["sun_cut"], pos)), _full(ly["crown_cut"], pos))
-    return ImageChops.subtract(solid, ImageChops.multiply(cut, solid))
 
 
 def _crystal(img, shape, c, depth=3, frost=0.2, tintk=0.26, glow=0.9, glow_r=22, shadow=True):
@@ -1146,191 +856,7 @@ def _lionsun3(img, c, hm, date, now):
     return plain_text(img, date, (cx, 650), _font("Poppins-Medium.ttf", 28), (255, 255, 255, 230), shadow=False)
 
 
-def _lionsun4(img, c, hm, date, now):
-    """شیر و خورشید بلوری ۴ (الماسی): large golden-crystal emblem, light beams and thick glass numerals."""
-    img = _dim(img, 0.62)
-    halo = _layer()
-    ImageDraw.Draw(halo).ellipse((S / 2 - 330, 20, S / 2 + 330, 560), fill=c + (120,))
-    img = _over(img, halo.filter(ImageFilter.GaussianBlur(90)))
-    img = _god_rays(img, S / 2, 300, c, count=22, alpha=40, seed=now.minute // 3)
-    pos, size = ((S - 700) // 2, -86), 700
-    img = _emblem_draw(img, size, pos, c)
-    rnd = random.Random(now.hour * 60 + now.minute)
-    for _ in range(7):
-        img = _star(img, rnd.randint(150, 650), rnd.randint(30, 520), rnd.randint(8, 18))
-    img = _star(img, S / 2, 22, 30)
-    f = _fit("Poppins-Bold.ttf", hm, 520, 170)
-    img = _crystal_text(img, hm, (S / 2, 662), f, c, depth=4, frost=0.08, tintk=0.34, glow=1.2, glow_r=24)
-    return plain_text(img, date, (S / 2, 752), _font("Poppins-Medium.ttf", 34), (255, 255, 255, 235))
-
-
 # ------------------------------------------------------------------ 8 more designs
-def _sparkles(img, c, now, n=14, area=(40, 40, S - 40, S - 40), seed_extra=0, size=(7, 20)):
-    rnd = random.Random(now.hour * 60 + now.minute + 7 + seed_extra)
-    lay = _layer()
-    d = ImageDraw.Draw(lay)
-    for _ in range(n):
-        x, y = rnd.randint(area[0], area[2]), rnd.randint(area[1], area[3])
-        r = rnd.randint(*size)
-        col = tint(c, 0.7) + (rnd.randint(170, 255),)
-        d.polygon([(x, y - r), (x + r * 0.16, y - r * 0.16), (x + r, y), (x + r * 0.16, y + r * 0.16),
-                   (x, y + r), (x - r * 0.16, y + r * 0.16), (x - r, y), (x - r * 0.16, y - r * 0.16)], fill=col)
-    return _over(_over(img, lay.filter(ImageFilter.GaussianBlur(5))), lay)
-
-
-def _crown(img, c, hm, date, now):
-    """تاج شاهی: gold crown with jewels over a big glowing time."""
-    img = _dim(img, 0.66)
-    img = _god_rays(img, S / 2, 250, c, count=14, alpha=34, seed=now.minute // 5)
-    cx, yb, w, h = S / 2, 330, 360, 200
-    xs = [cx - w / 2, cx - w / 4, cx, cx + w / 4, cx + w / 2]
-    ph = [0.76, 0.9, 1.0, 0.9, 0.76]
-    pts = [(xs[0], yb)]
-    for i, x in enumerate(xs):
-        pts.append((x, yb - ph[i] * h))
-        if i < 4:
-            pts.append(((x + xs[i + 1]) / 2, yb - 0.48 * h))
-    pts.append((xs[4], yb))
-    ss = _SS()
-    d = ss.d
-    X = lambda p: (p[0] * 2, p[1] * 2)
-    d.polygon([X(p) for p in pts], fill=(255, 255, 255, 255))
-    d.rounded_rectangle(X((cx - w / 2 - 6, yb - 4)) + X((cx + w / 2 + 6, yb + 46)), radius=22, fill=(255, 255, 255, 255))
-    for x, hh in zip(xs, ph):
-        d.ellipse(X((x - 17, yb - hh * h - 20)) + X((x + 17, yb - hh * h + 14)), fill=(255, 255, 255, 255))
-    shape = ss.done().split()[3]
-    sh = Image.new("RGBA", (S, S), (0, 0, 0, 255))
-    sh.putalpha(shape.filter(ImageFilter.GaussianBlur(14)).point(lambda p: int(p * 0.7)))
-    img = _over(img, ImageChops.offset(sh, 0, 12))
-    img = _glow_from_mask(img, shape, c, 26, 0.85, 1)
-    fillg = _metal(tint(c, 0.92), c, shade(c, 0.55), int(yb - h), int(yb + 46)).convert("RGBA")
-    fillg.putalpha(shape)
-    img = _over(img, fillg)
-    edge = ImageChops.subtract(shape.filter(ImageFilter.MaxFilter(5)), shape.filter(ImageFilter.MinFilter(3)))
-    el = Image.new("RGBA", (S, S), shade(c, 0.6) + (255,))
-    el.putalpha(edge.point(lambda p: int(p * 0.85)))
-    img = _over(img, el)
-    gems = _layer()
-    gd = ImageDraw.Draw(gems)
-    for x, hh in zip(xs, ph):
-        gd.ellipse((x - 11, yb - hh * h - 14, x + 11, yb - hh * h + 8), fill=(255, 255, 255, 255))
-        gd.ellipse((x - 6, yb - hh * h - 11, x + 2, yb - hh * h - 3), fill=tint(c, 0.95) + (255,))
-    for i in range(5):
-        gx = cx - w / 2 + 52 + i * (w - 104) / 4
-        gd.polygon([(gx, yb + 6), (gx + 15, yb + 21), (gx, yb + 36), (gx - 15, yb + 21)], fill=(255, 255, 255, 235) if i == 2 else shade(c, 0.1) + (255,))
-        gd.polygon([(gx, yb + 10), (gx + 7, yb + 18), (gx, yb + 24), (gx - 7, yb + 18)], fill=tint(c, 0.85) + (200,))
-    img = _over(img, gems)
-    img = _sparkles(img, c, now, 16, (60, 80, S - 60, 400))
-    f = _fit("Poppins-Bold.ttf", hm, S * 0.82, 210)
-    img = glow_text(img, hm, (S / 2, 545), f, c, radius=20, core=(255, 255, 255))
-    ln = _layer()
-    d = ImageDraw.Draw(ln)
-    d.line([(S / 2 - 230, 676), (S / 2 - 24, 676)], fill=c + (255,), width=3)
-    d.line([(S / 2 + 24, 676), (S / 2 + 230, 676)], fill=c + (255,), width=3)
-    d.polygon([(S / 2, 664), (S / 2 + 12, 676), (S / 2, 688), (S / 2 - 12, 676)], fill=tint(c, 0.6) + (255,))
-    img = _over(img, ln)
-    return plain_text(img, date, (S / 2, 735), _font("Poppins-Medium.ttf", 42), (255, 255, 255, 235))
-
-
-def _shield(img, c, hm, date, now):
-    """سپر سلطنتی: crossed swords behind a metallic shield holding the time."""
-    img = _dim(img, 0.66)
-    cx = S / 2
-    g1, g2, g3 = tint(c, 0.85), c, shade(c, 0.55)
-    ss = _SS()
-    d = ss.d
-    X = lambda p: (p[0] * 2, p[1] * 2)
-    for sgn in (-1, 1):                                       # crossed swords: blade tips above the corners, hilts below the sides
-        a = sgn * 40
-        ox, oy = cx, 440
-        tip = _polar(ox, oy, 400, a)
-        nx, ny = math.cos(math.radians(a)), math.sin(math.radians(a))
-        base = _polar(ox, oy, -30, a)
-        sh_ = _polar(ox, oy, 340, a)
-        d.polygon([X((base[0] - nx * 14, base[1] - ny * 14)), X((sh_[0] - nx * 14, sh_[1] - ny * 14)), X(tip), X((sh_[0] + nx * 14, sh_[1] + ny * 14)), X((base[0] + nx * 14, base[1] + ny * 14))], fill=(255, 255, 255, 255))
-        gx, gy = _polar(ox, oy, -60, a)
-        d.line([X((gx - nx * 58, gy - ny * 58)), X((gx + nx * 58, gy + ny * 58))], fill=(255, 255, 255, 255), width=18)
-        hx, hy = _polar(ox, oy, -250, a)
-        d.line([X((gx, gy)), X((hx, hy))], fill=(255, 255, 255, 255), width=20)
-        d.ellipse(X((hx - 20, hy - 20)) + X((hx + 20, hy + 20)), fill=(255, 255, 255, 255))
-    swords = ss.done().split()[3]
-    sw = _metal(g1, g2, g3, 80, 720).convert("RGBA")
-    sw.putalpha(swords)
-    img = _glow_from_mask(img, swords, c, 14, 0.6, 1)
-    img = _over(img, sw)
-    top = _cr([(cx - 250, 168), (cx - 125, 190), (cx, 166), (cx + 125, 190), (cx + 250, 168)], n=16)
-    right = _cr([(cx + 250, 168), (cx + 262, 340), (cx + 196, 530), (cx, 716)], n=16)
-    left = [(2 * cx - x, y) for x, y in reversed(right)]
-    path = [(cx + (x - cx) * 0.9, 430 + (y - 430) * 0.9) for x, y in top + right[1:] + left[1:]]
-    outer = path
-    inner = [(cx + (x - cx) * 0.9, 430 + (y - 430) * 0.9) for x, y in path]
-    m_out = Image.new("L", (S * 2, S * 2), 0)
-    ImageDraw.Draw(m_out).polygon([(x * 2, y * 2) for x, y in path], fill=255)
-    m_out = m_out.resize((S, S), Image.LANCZOS)
-    m_in = Image.new("L", (S * 2, S * 2), 0)
-    ImageDraw.Draw(m_in).polygon([(x * 2, y * 2) for x, y in inner], fill=255)
-    m_in = m_in.resize((S, S), Image.LANCZOS)
-    sh = Image.new("RGBA", (S, S), (0, 0, 0, 255))
-    sh.putalpha(m_out.filter(ImageFilter.GaussianBlur(20)).point(lambda p: int(p * 0.8)))
-    img = _over(img, ImageChops.offset(sh, 0, 16))
-    img = _glow_from_mask(img, m_out, c, 24, 0.8, 1)
-    rim = _metal(g1, g2, g3, 150, 712).convert("RGBA")
-    rim.putalpha(m_out)
-    img = _over(img, rim)
-    face = _vgrad(S, S, shade(c, 0.55), shade(c, 0.93)).convert("RGBA")
-    face.putalpha(m_in)
-    img = _over(img, face)
-    sheen = _layer()
-    ImageDraw.Draw(sheen).polygon([(cx - 240, 160), (cx - 40, 160), (cx - 210, 560), (cx - 250, 470)], fill=(255, 255, 255, 34))
-    sheen.putalpha(ImageChops.multiply(sheen.split()[3], m_in))
-    img = _over(img, sheen)
-    ln = _layer()
-    ImageDraw.Draw(ln).line([(cx + (x - cx) * 0.8, 430 + (y - 430) * 0.8) for x, y in path + [path[0]]], fill=g2 + (150,), width=2, joint="curve")
-    img = _over(img, ln)
-    f = _fit("Poppins-Bold.ttf", hm, 330, 150)
-    img = glow_text(img, hm, (cx, 400), f, c, radius=16, core=(255, 255, 255))
-    st = _layer()
-    d = ImageDraw.Draw(st)
-    for i in range(5):
-        x = cx - 80 + i * 40
-        d.polygon([_polar(x, 282, 13 if j % 2 == 0 else 5.5, j * 36) for j in range(10)], fill=g1 + (255,))
-    img = _over(img, st)
-    return plain_text(img, date, (cx, 532), _font("Poppins-Medium.ttf", 40), (255, 255, 255, 235))
-
-
-def _cinema(img, c, hm, date, now):
-    """سینمایی: letterbox bars, film grain, REC dot and a movie-title time."""
-    img = _dim(img, 0.3)
-    tone = _layer()
-    ImageDraw.Draw(tone).rectangle((0, 0, S, S), fill=c + (46,))
-    img = _over(img, tone)
-    grain = Image.effect_noise((S, S), 70).point(lambda p: int(abs(p - 128) * 0.28))
-    gl = Image.new("RGBA", (S, S), (255, 255, 255, 255))
-    gl.putalpha(grain)
-    img = _over(img, gl)
-    bars = _layer()
-    d = ImageDraw.Draw(bars)
-    d.rectangle((0, 0, S, 118), fill=(0, 0, 0, 255))
-    d.rectangle((0, S - 150, S, S), fill=(0, 0, 0, 255))
-    d.line([(0, 118), (S, 118)], fill=c + (255,), width=3)
-    d.line([(0, S - 150), (S, S - 150)], fill=c + (255,), width=3)
-    if now.minute % 2 == 0:
-        d.ellipse((46, 44, 78, 76), fill=(255, 38, 54, 255))
-    else:
-        d.ellipse((46, 44, 78, 76), outline=(255, 38, 54, 255), width=4)
-    img = _over(img, bars)
-    img = plain_text(img, "REC", (96, 60), _font("Poppins-Bold.ttf", 34), (255, 255, 255, 240), anchor="lm", shadow=False)
-    img = plain_text(img, "4K  ·  24 FPS", (S - 48, 60), _font("Poppins-Medium.ttf", 30), (255, 255, 255, 220), anchor="rm", shadow=False)
-    lay = _layer()
-    d = ImageDraw.Draw(lay)
-    for (x, y, sx, sy) in ((60, 160, 1, 1), (S - 60, 160, -1, 1), (60, S - 190, 1, -1), (S - 60, S - 190, -1, -1)):
-        d.line([(x, y), (x + 54 * sx, y)], fill=(255, 255, 255, 190), width=4)
-        d.line([(x, y), (x, y + 54 * sy)], fill=(255, 255, 255, 190), width=4)
-    img = _over(img, lay)
-    f = _fit("Poppins-Bold.ttf", hm, S * 0.78, 230)
-    img = glow_text(img, hm, (S / 2, 430), f, c, radius=22, core=(255, 244, 214), strength=1.1)
-    img = plain_text(img, date, (S / 2, S - 76), _font("Poppins-Light.ttf", 50), (255, 255, 255, 235), shadow=False)
-    return img
 
 
 def _polaroid(img, c, hm, date, now):
@@ -1402,91 +928,6 @@ def _radar(img, c, hm, date, now):
     return img
 
 
-def _hexa(img, c, hm, date, now):
-    """شش‌ضلعی: honeycomb field with a glowing hexagon frame around the time."""
-    img = _dim(img, 0.64)
-    rnd = random.Random(now.hour * 60 + now.minute)
-    size = 66
-    lay = _layer()
-    d = ImageDraw.Draw(lay)
-    hexes = []
-    for row in range(-1, 13):
-        for col in range(-1, 11):
-            x = col * size * 1.5 + 8
-            y = row * size * math.sqrt(3) + (size * math.sqrt(3) / 2 if col % 2 else 0)
-            hexes.append((x, y))
-    for (x, y) in hexes:
-        pts = [_polar(x, y, size - 3, 60 * i + 30) for i in range(6)]
-        if rnd.random() < 0.13:
-            d.polygon(pts, fill=c + (rnd.randint(40, 105),))
-        d.line(pts + [pts[0]], fill=c + (70,), width=2)
-    img = _over(img, lay)
-    cx = cy = S / 2
-    big = [_polar(cx, cy, 290, 60 * i + 30) for i in range(6)]
-    mid = _layer()
-    ImageDraw.Draw(mid).polygon(big, fill=(6, 6, 12, 205))
-    img = _over(img, mid)
-    gm = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(gm).line(big + [big[0]], fill=255, width=8, joint="curve")
-    img = _glow_from_mask(img, gm, c, 16, 1.6, 2)
-    ol = _layer()
-    d = ImageDraw.Draw(ol)
-    d.line(big + [big[0]], fill=tint(c, 0.75) + (255,), width=5, joint="curve")
-    small = [_polar(cx, cy, 262, 60 * i + 30) for i in range(6)]
-    d.line(small + [small[0]], fill=c + (130,), width=2)
-    img = _over(img, ol)
-    f = _fit("Poppins-Bold.ttf", hm, 400, 190)
-    img = glow_text(img, hm, (cx, cy - 20), f, c, radius=18, core=(255, 255, 255))
-    pill = _layer()
-    ImageDraw.Draw(pill).rounded_rectangle((cx - 130, cy + 78, cx + 130, cy + 128), radius=25, fill=c + (255,))
-    img = _over(img, pill)
-    return plain_text(img, date, (cx, cy + 103), _font("Poppins-Bold.ttf", 34), (12, 12, 18, 255), shadow=False)
-
-
-def _ember(img, c, hm, date, now):
-    """آتش و خاکستر: fire glow rising from the bottom, flying sparks and a molten time."""
-    img = _dim(img, 0.72)
-    rnd = random.Random(now.hour * 60 + now.minute)
-    glow = _layer()
-    gd = ImageDraw.Draw(glow)
-    for y in range(S):
-        t = max(0.0, (y - 180) / (S - 180))
-        gd.line([(0, y), (S, y)], fill=c + (int(235 * t ** 1.25),))
-    img = _over(img, glow)
-    fl = _layer()
-    d = ImageDraw.Draw(fl)
-    for i in range(16):
-        x = i * S / 15 + rnd.randint(-22, 22)
-        hgt = rnd.randint(250, 520)
-        w = rnd.randint(42, 78)
-        d.polygon([(x - w, S + 10), (x - w * 0.5, S - hgt * 0.45), (x + rnd.randint(-14, 14), S - hgt), (x + w * 0.45, S - hgt * 0.5), (x + w, S + 10)], fill=tint(c, 0.15) + (rnd.randint(110, 175),))
-    img = _over(_over(img, fl.filter(ImageFilter.GaussianBlur(20))), fl.filter(ImageFilter.GaussianBlur(8)))
-    core = _layer()
-    d = ImageDraw.Draw(core)
-    for i in range(16):
-        x = i * S / 15 + rnd.randint(-22, 22)
-        hgt = rnd.randint(130, 300)
-        d.polygon([(x - 24, S + 10), (x + rnd.randint(-10, 10), S - hgt), (x + 24, S + 10)], fill=tint(c, 0.75) + (170,))
-    img = _over(img, core.filter(ImageFilter.GaussianBlur(10)))
-    sp = _layer()
-    d = ImageDraw.Draw(sp)
-    for _ in range(70):
-        x, y = rnd.randint(0, S), rnd.randint(60, S - 40)
-        r = rnd.choice((1.4, 2, 2.6, 3.4))
-        k = rnd.randint(14, 46)
-        d.line([(x, y), (x - k * 0.25, y + k)], fill=tint(c, 0.5) + (rnd.randint(60, 150),), width=1)
-        d.ellipse((x - r, y - r, x + r, y + r), fill=tint(c, 0.75) + (rnd.randint(150, 255),))
-    img = _over(_over(img, sp.filter(ImageFilter.GaussianBlur(3))), sp)
-    f = _fit("Poppins-Bold.ttf", hm, S * 0.84, 250)
-    pos = (S / 2, 300)
-    m = _mask_text(hm, pos, f)
-    img = _glow_from_mask(img, m, c, 26, 1.5, 2)
-    hot = _metal((255, 255, 245), tint(c, 0.5), c, 170, 430).convert("RGBA")
-    hot.putalpha(m)
-    img = _over(img, hot)
-    return plain_text(img, date, (S / 2, 500), _font("Poppins-Medium.ttf", 44), (255, 255, 255, 240))
-
-
 def _hand(cx, cy, ang, length, w, tail):
     a = math.radians(ang - 90)
     ux, uy = math.cos(a), math.sin(a)
@@ -1556,19 +997,19 @@ def _roman(img, c, hm, date, now):
     return _over(img, cap)
 
 
-STYLES += [("aurora", "شفق"), ("glitch", "گلیچ"), ("led", "ال‌ای‌دی"), ("synth", "سینت‌ویو"),
+STYLES += [("aurora", "شفق"), ("glitch", "گلیچ"), ("led", "ال‌ای‌دی"),
            ("gold", "طلایی لوکس"), ("matrix", "ماتریکس"), ("orbit", "مدار"), ("ecg", "ضربان"), ("flip", "فلیپ")]
 
 
-_DRAW = {"neon": _neon, "stack": _stack, "ring": _ring, "analog": _analog, "glass": _glass,
-         "hud": _hud, "capsule": _capsule, "minimal": _minimal,
-         "aurora": _aurora, "glitch": _glitch, "led": _led, "synth": _synth, "gold": _gold,
+_DRAW = {"neon": _neon, "stack": _stack, "ring": _ring, "analog": _analog,
+         "hud": _hud,
+         "aurora": _aurora, "glitch": _glitch, "led": _led, "gold": _gold,
          "matrix": _matrix, "orbit": _orbit, "ecg": _ecg, "flip": _flip}
-STYLES += [("lionsun", "🦁 شیر و خورشید ۱"), ("lionsun2", "🦁 شیر و خورشید ۲"), ("crown", "تاج شاهی"), ("shield", "سپر سلطنتی"),
-           ("cinema", "سینمایی"), ("polaroid", "پولاروید"), ("radar", "رادار"), ("hexa", "شش‌ضلعی"), ("ember", "آتش و خاکستر"),
+STYLES += [("lionsun", "🦁 شیر و خورشید ۱"), ("lionsun2", "🦁 شیر و خورشید ۲"),
+           ("polaroid", "پولاروید"), ("radar", "رادار"),
            ("roman", "آنالوگ رومی لوکس")]
-_DRAW.update({"lionsun": _lionsun, "lionsun2": _lionsun2, "crown": _crown, "shield": _shield, "cinema": _cinema,
-              "polaroid": _polaroid, "radar": _radar, "hexa": _hexa, "ember": _ember, "roman": _roman})
+_DRAW.update({"lionsun": _lionsun, "lionsun2": _lionsun2,
+              "polaroid": _polaroid, "radar": _radar, "roman": _roman})
 
 # ------------------------------------------------------------------ the bloody red hand (دست قرمز)
 @functools.lru_cache(maxsize=1)
@@ -1695,8 +1136,8 @@ def _hand3(img, c, hm, date, now):
     return plain_text(img, date, (300, 536), _font("Poppins-Medium.ttf", 34), (255, 215, 215, 240))
 
 
-STYLES += [("lionsun3", "🦁 شیر و خورشید ۳"), ("lionsun4", "🦁 شیر و خورشید ۴")]
-_DRAW.update({"lionsun3": _lionsun3, "lionsun4": _lionsun4})
+STYLES += [("lionsun3", "🦁 شیر و خورشید ۳")]
+_DRAW.update({"lionsun3": _lionsun3})
 STYLES += [("hand1", "🩸 دست قرمز ۱"), ("hand2", "🩸 دست قرمز ۲"), ("hand3", "🩸 دست قرمز ۳")]
 _DRAW.update({"hand1": _hand1, "hand2": _hand2, "hand3": _hand3})
 
@@ -1733,54 +1174,6 @@ def _starfield(img, n, seed, big=6):
             d.line((x, y - 14, x, y + 14), fill=tintc + (120,), width=1)
     img = _over(img, glow.filter(ImageFilter.GaussianBlur(5)))
     return _over(img, lay)
-
-
-def _bhole(img, c, hm, date, now):
-    """سیاه‌چاله: lensed accretion disk (hot inside, doppler-bright on one side), photon ring, star dust."""
-    img = _dim(img, 0.86, vignette=False)
-    img = _starfield(img, 190, now.hour * 60 + now.minute // 10)
-    cx, cy, R = S / 2, 292, 112
-    stops = [(0, tint(c, 0.95)), (0.22, tint(c, 0.55)), (0.55, c), (1, shade(c, 0.6))]
-    disk = _layer()
-    d = ImageDraw.Draw(disk)
-    N = 34
-    for i in range(N):
-        t = i / (N - 1)
-        rx = R * 1.18 + t * 340
-        ry = rx * 0.2
-        a = int(70 + 185 * (1 - t) ** 0.9)
-        d.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), outline=_ramp(stops, t) + (a,), width=int(13 * (1 - t)) + 3)
-    dop = Image.linear_gradient("L").rotate(90).resize((S, S))                    # bright on the approaching (left) side
-    dop = dop.point(lambda p: int(110 + 145 * (p / 255)))
-    disk.putalpha(ImageChops.multiply(disk.split()[3], dop))
-    img = _over(img, disk.filter(ImageFilter.GaussianBlur(14)))
-    img = _over(img, disk.filter(ImageFilter.GaussianBlur(2)))
-    halo = _layer()                                                              # lensed back-of-disk wrapping the hole
-    hd = ImageDraw.Draw(halo)
-    for k, (w, a) in enumerate(((14, 230), (9, 170), (6, 110))):
-        rr = R * (1.1 + 0.11 * k)
-        hd.arc((cx - rr, cy - rr, cx + rr, cy + rr), 188, 352, fill=_ramp(stops, 0.15 + 0.25 * k) + (a,), width=w)
-        hd.arc((cx - rr, cy - rr, cx + rr, cy + rr), 8, 172, fill=_ramp(stops, 0.2 + 0.25 * k) + (a // 3,), width=w // 2 + 1)
-    img = _glow_from_mask(img, halo.split()[3], c, 18, 1.2, 1)
-    img = _over(img, halo)
-    hole = _layer()
-    ImageDraw.Draw(hole).ellipse((cx - R, cy - R, cx + R, cy + R), fill=(0, 0, 0, 255))
-    img = _over(img, hole)
-    ring = _layer()
-    ImageDraw.Draw(ring).ellipse((cx - R - 2, cy - R - 2, cx + R + 2, cy + R + 2), outline=tint(c, 0.9) + (255,), width=4)
-    img = _glow_from_mask(img, ring.split()[3], c, 12, 1.8, 2)
-    img = _over(img, ring)
-    front = Image.new("L", (S, S), 0)                                            # the near half of the disk passes IN FRONT of the hole
-    ImageDraw.Draw(front).rectangle((0, cy + 2, S, S), fill=255)
-    fr = _layer()
-    fr.paste(disk, (0, 0), front)
-    img = _over(img, fr)
-    f = _fit("Poppins-Bold.ttf", hm, 520, 190)
-    img = glow_text(img, hm, (S / 2, 610), f, c, radius=22, core=(255, 255, 255), strength=1.4)
-    lay = _layer()
-    ImageDraw.Draw(lay).line([(S / 2 - 120, 706), (S / 2 + 120, 706)], fill=c + (255,), width=3)
-    img = _over(_glow_from_mask(img, lay.split()[3], c, 6, 1.2, 1), lay)
-    return plain_text(img, date, (S / 2, 748), _font("Poppins-Medium.ttf", 32), tint(c, 0.6) + (255,))
 
 
 def _metal_fill(img, mask, c, light=0.55, dark=0.55, bevel=2):
@@ -1884,45 +1277,6 @@ def _skeleton(img, c, hm, date, now):
     return base
 
 
-def _radeq(img, c, hm, date, now):
-    """ایکولایزر دایره‌ای: 72 rounded bars around a glass clock, hue sweeping around the ring, reflection glow."""
-    img = _dim(img, 0.82)
-    cx = cy = S / 2
-    rnd = random.Random(now.hour * 60 + now.minute)
-    ph1, ph2 = rnd.random() * 6.28, rnd.random() * 6.28
-    n = 72
-    ss = _SS()
-    glowl = _SS()
-    for i in range(n):
-        a = i * 360 / n
-        lv = 0.5 + 0.5 * math.sin(i * 0.33 + ph1)
-        lv *= 0.55 + 0.45 * math.sin(i * 0.11 + ph2)
-        ln = 26 + 150 * abs(lv) + rnd.random() * 18
-        col = _hue(c, (i / n - 0.5) * 0.28, s=0.8, v=1)
-        p1, p2 = _polar(cx, cy, 176, a), _polar(cx, cy, 176 + ln, a)
-        ss.d.line([(p1[0] * 2, p1[1] * 2), (p2[0] * 2, p2[1] * 2)], fill=col + (255,), width=18)
-        for pp in (p1, p2):
-            ss.d.ellipse(ss.xy(pp[0] - 4.5, pp[1] - 4.5, pp[0] + 4.5, pp[1] + 4.5), fill=col + (255,))
-        q2 = _polar(cx, cy, 176 - 12 - ln * 0.28, a)                              # inner mirrored bar
-        q1 = _polar(cx, cy, 164, a)
-        glowl.d.line([(q1[0] * 2, q1[1] * 2), (q2[0] * 2, q2[1] * 2)], fill=col + (130,), width=12)
-    bars = ss.done()
-    img = _glow_from_mask(img, bars.split()[3], c, 16, 0.9, 1)
-    img = _over(img, glowl.done())
-    img = _over(img, bars)
-    disc = _layer()
-    d = ImageDraw.Draw(disc)
-    d.ellipse((cx - 146, cy - 146, cx + 146, cy + 146), fill=(8, 10, 18, 215), outline=tint(c, 0.4) + (230,), width=4)
-    img = _glow_from_mask(img, disc.split()[3], c, 10, 0.7, 1)
-    img = _over(img, disc)
-    f = _fit("Poppins-Bold.ttf", hm, 250, 100)
-    img = plain_text(img, hm, (cx, cy - 8), f, (255, 255, 255, 255))
-    img = plain_text(img, date, (cx, cy + 62), _font("Poppins-Medium.ttf", 24), tint(c, 0.6) + (255,), shadow=False)
-    refl = _layer()
-    ImageDraw.Draw(refl).pieslice((cx - 132, cy - 132, cx + 132, cy + 132), 200, 250, fill=(255, 255, 255, 30))
-    return _over(img, refl)
-
-
 def _horizon(img, c, hm, date, now):
     """افق سیاره: planet limb with layered atmosphere, cloud bands, city lights, sun flare with anamorphic streak."""
     img = _dim(img, 0.9, vignette=False)
@@ -1973,10 +1327,8 @@ def _horizon(img, c, hm, date, now):
     return plain_text(img, date, (S / 2, 360), _font("Poppins-Medium.ttf", 36), tint(c, 0.65) + (255,))
 
 
-STYLES += [("bhole", "🕳 سیاه‌چاله"), ("skeleton", "⚙️ ساعت اسکلتی"), ("radeq", "🎚 ایکولایزر دایره‌ای"),
-           ("horizon", "🌍 افق سیاره")]
-_DRAW.update({"bhole": _bhole, "skeleton": _skeleton, "radeq": _radeq, "horizon": _horizon})
-
+STYLES += [("skeleton", "⚙️ ساعت اسکلتی"), ("horizon", "🌍 افق سیاره")]
+_DRAW.update({"skeleton": _skeleton, "horizon": _horizon})
 
 
 def style_key(v):
@@ -2002,9 +1354,7 @@ def render(raw, style, color, now=None) -> bytes:
     now = now or datetime.now()
     ck = color_key(color)
     col = COLORS[ck][2]
-    img = make_base(raw, (26, 28, 40) if ck == "dark" else col)
-    if ck == "dark":
-        img = _over(img, Image.new("RGBA", (S, S), (0, 0, 0, 150)))
+    img = make_base(raw, col)
     img = _DRAW[style_key(style)](img, col, now.strftime("%H:%M"), _date_text(now), now)
     img = img.convert("RGB")
     if OUT != S:                                            # high-res output: zooming in stays smooth

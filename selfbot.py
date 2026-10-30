@@ -894,7 +894,7 @@ def cpic_help(cfg):
     return (f"🖼 **ساعت روی عکس پروفایل** {'🟢 روشن' if cfg['on'] else '🔴 خاموش'}\n"
             f"🎨 طرح: {st} | رنگ: {clockpic.COLORS[cfg['color']][0]} | هر {cfg['every']} دقیقه\n\n"
             "`.ساعت_عکس روشن` / `.ساعت_عکس خاموش`\n"
-            "`.ساعت_عکس رنگ آبی` (قرمز، آبی، سبز، بنفش، طلایی، صورتی، فیروزه‌ای، نارنجی، سفید، دارک یا شماره ۱ تا ۱۰)\n"
+            "`.ساعت_عکس رنگ آبی` (قرمز، آبی، سبز، بنفش، طلایی، صورتی، فیروزه‌ای، نارنجی، سفید یا شماره ۱ تا ۹)\n"
             "`.ساعت_عکس طرح 3` (" + "، ".join(f"{i}={n}" for i, (_k, n) in enumerate(clockpic.STYLES, 1)) + ")\n"
             "`.ساعت_عکس فاصله 2` (هر ۱ / ۲ / ۵ / ۱۰ دقیقه)\n"
             "`.ساعت_عکس پیش‌نمایش` — نمونه توی Saved Messages\n"
@@ -925,7 +925,7 @@ async def c_clockpic(c, e, uid, arg):
         k = _pick_style(" ".join(w[1:])) if len(w) > 1 else None
         if not k:
             return await e.edit("🖼 طرح‌ها: " + " | ".join(f"{i}. {n}" for i, (_k, n) in enumerate(clockpic.STYLES, 1))
-                                + "\nمثال: `.ساعت_عکس طرح 4` | `.ساعت_عکس طرح شیر` | `.ساعت_عکس طرح 19`")
+                                + "\nمثال: `.ساعت_عکس طرح 4` | `.ساعت_عکس طرح شیر` | `.ساعت_عکس طرح 14`")
         await db.uset(uid, "cpic_style", k)
         await e.edit(f"🖼 طرح ساعت: {dict(clockpic.STYLES)[k]}")
         return await cpic_refresh(uid)

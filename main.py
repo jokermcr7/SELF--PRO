@@ -692,7 +692,7 @@ async def clock_view(uid, path, mk, back_path):
 
 
 async def clockpic_view(uid, path, mk, back_path):
-    """🖼 clock drawn on the profile photo: on/off, 7 colors, 36 designs, interval, preview."""
+    """🖼 clock drawn on the profile photo: on/off, 9 colors, 24 designs, interval, preview."""
     c = selfbot.clients.get(uid)
     if not c:
         return None
