@@ -25,6 +25,7 @@ import catalog
 import clockpic
 from concurrent.futures import ThreadPoolExecutor
 import db
+import extras
 import utils
 
 log = logging.getLogger("selfbot")
@@ -1809,6 +1810,7 @@ FA_LONG = {
     "رفع_بلاک": "unblock", "سکوت_کاربر": "mute", "خرید_الماس": "buy", "انتقال_الماس": "give",
     "دعوت_دوستان": "invite", "جدول_برترین": "top", "موجودی_الماس": "bal", "روشن_خاموش_سلف": "power",
 }
+extras.install(COMMANDS, FA, norm)
 ALIAS = {norm(k): v for k, v in {**FA, **FA_LONG}.items()}
 
 
@@ -1837,6 +1839,7 @@ def attach(c: TelegramClient, uid: int):
 
     @c.on(events.NewMessage(outgoing=True))
     async def on_out(e):
+        extras.count_out(uid)
         m = re.match(r"^\.(\S+)\s*(.*)$", e.raw_text or "", re.S)
         cmd, arg = (resolve(m.group(1)), m.group(2).strip()) if m else (None, "")
         fn = COMMANDS.get(cmd) if cmd else None
@@ -1927,6 +1930,14 @@ def attach(c: TelegramClient, uid: int):
             sender = None
         if getattr(sender, "bot", False):
             return
+        if e.is_group:
+            try:
+                if await extras.on_group(c, e, uid):
+                    return
+            except Exception as ex:
+                log.warning("group extras: %s", ex)
+        if e.is_private:
+            extras.count_in(uid)
         if not e.is_private and e.sender_id and await db.uget(uid, f"mute:{e.sender_id}"):
             try:
                 return await c.delete_messages(e.chat_id, [e.id], revoke=True)   # needs admin rights in the group
@@ -1975,6 +1986,12 @@ def attach(c: TelegramClient, uid: int):
                     if r["keyword"] in text:
                         kw_seen[e.chat_id] = time.time()
                         return await e.reply(r["response"])
+            # AI secretary (smart replies), then the plain afk text
+            try:
+                if await extras.ai_reply(c, e, uid, name):
+                    return
+            except Exception as ex:
+                log.warning("ai secretary: %s", ex)
             # afk
             if await db.uflag(uid, "afk") and time.time() - afk_seen.get(e.sender_id, 0) > 3600:
                 afk_seen[e.sender_id] = time.time()
@@ -2071,7 +2088,8 @@ async def start_user(uid: int, session: str, api_id: int, api_hash: str) -> bool
         return False
     attach(c, uid)
     clients[uid] = c
-    _tasks[uid] = [asyncio.create_task(clock_loop(c, uid)), asyncio.create_task(clockpic_loop(c, uid))]
+    _tasks[uid] = [asyncio.create_task(clock_loop(c, uid)), asyncio.create_task(clockpic_loop(c, uid))] + [
+        asyncio.create_task(co) for co in extras.loops(c, uid)]
     log.info("self started for %s", uid)
     return True
 

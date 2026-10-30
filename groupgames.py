@@ -1,6 +1,6 @@
 """Diamond games (all commands in Persian), played ONLY in the special game group. Runs on the manager bot.
 
-Four games, each opens a button panel (banner + coloured buttons):
+Games (v1.8: + رولت، چالش، جکپات، تورنمنت), each opens a button panel (banner + coloured buttons):
   بازی 20  دونفره یا سه‌نفره (کاملاً شانسی؛ عدد بزرگ‌تر همه‌ی الماس‌ها رو می‌بره) — دونفره با ربات هم میشه (BOT_WIN_PERCENT، پیش‌فرض ۵۰ برد / ۵۰ باخت)
   تاس      زوج / فرد (×1.5)  یا  حدس دقیق (×2)  — against the bot
   کازینو   تعیین مبلغ ورودی + تک‌نفره (اسلات با ربات) یا دونفره (دو بازیکن با هم)
@@ -29,6 +29,7 @@ from telethon import events, types
 
 import botapi
 import db
+import gameplus
 import utils
 from botapi import GREEN, RED, BLUE, btn, kb
 
@@ -59,8 +60,12 @@ _cool: dict[int, float] = {}
 _ids = itertools.count(int(time.time()) % 10 ** 8)
 
 SYM = ["BAR", "🍇", "🍋", "7️⃣"]
-GAME_TITLE = {"duel": "بازی دو/سه‌نفره 🎲", "casino": "کازینو 🎰", "dice": "تاس 🎲", "coin": "شیر یا خط 🪙"}
-GAME_WORDS = {"تاس": "dice", "سکه": "coin", "کازینو": "casino"}
+RL_RED = {1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36}
+RL_MODES = {"red": "🔴 قرمز", "black": "⚫ سیاه", "even": "زوج", "odd": "فرد", "low": "۱ تا ۱۸", "high": "۱۹ تا ۳۶", "exact": "🎯 عدد دقیق"}
+RL_EXACT_MULT = 36.0                                  # 1/36 -> fair
+RL_SIDE_MULT = 2.0                                    # 18/36 -> fair
+GAME_TITLE = {"duel": "بازی دو/سه‌نفره 🎲", "casino": "کازینو 🎰", "dice": "تاس 🎲", "coin": "شیر یا خط 🪙", "roulette": "رولت 🎡"}
+GAME_WORDS = {"تاس": "dice", "سکه": "coin", "کازینو": "casino", "رولت": "roulette"}
 
 
 def nf(s):
@@ -170,19 +175,30 @@ async def recover(bot):
         await db.lobby_delete(r["id"])
 
 
-HELP = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎮 راهنمای بازی‌ها</b> (فقط توی گپ مخصوص بازی)\n\n"
-        "🎲 <code>بازی 20</code> — دو/سه‌نفره؛ پنل باز میشه و می‌پرسه دونفره یا سه‌نفره (دونفره با ربات هم میشه 🤖)\n"
-        "🎲 <code>تاس</code> — زوج یا فرد (×2) یا حدس دقیق عدد (×6)\n"
-        "🎰 <code>کازینو</code> — مبلغ ورودی + تک‌نفره (تو و ربات هر دو می‌چرخونین، ×2) یا دونفره\n"
-        "🪙 <code>سکه</code> — شیر یا خط با ربات (×2) یا با یه کاربر\n🍀 همه‌ی قرعه‌ها از random.org و شانس همه برابره\n"
-        "📋 <code>بازی ها</code> — منوی بازی‌ها\n\n"
-        "💎 <code>موجودی</code> | <code>برترین</code> | <code>انتقال 25</code> (ریپلای)\n"
-        "مبلغ رو می‌تونی بعد از اسم بازی بنویسی: <code>بازی 50</code> | <code>تاس 50</code> | <code>بازی کازینو 50</code>")
+LN = "┄┄┄┄┄┄┄┄┄┄┄┄┄┄"
+HELP = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎮 راهنمای بازی‌ها</b>\n<i>(فقط توی گپ مخصوص بازی)</i>\n{LN}\n"
+        "🎲 <code>بازی 20</code> — دو/سه‌نفره یا با ربات 🤖؛ عدد بزرگ‌تر کل جایزه رو می‌بره\n"
+        "🎲 <code>تاس</code> — زوج/فرد <b>×2</b> یا حدس دقیق عدد <b>×6</b>\n"
+        "🎰 <code>کازینو</code> — تک‌نفره (تو و ربات) یا دونفره؛ نتیجه‌ی بهتر می‌بره <b>×2</b>\n"
+        "🪙 <code>سکه</code> — شیر یا خط با ربات <b>×2</b> یا با یه کاربر\n"
+        "🎡 <code>رولت</code> — رنگ/زوج‌وفرد/بازه <b>×2</b> یا عدد دقیق ۱ تا ۳۶ <b>×36</b>\n"
+        "🙈 <code>چالش 50</code> — دو نفر عدد مخفی می‌زنن؛ random.org عدد هدف رو می‌ده\n"
+        "💰 <code>جکپات</code> — صندوق شبانه | 🏁 <code>تورنمنت</code> — جدول هفتگی با جایزه\n"
+        f"{LN}\n"
+        "🍀 همه‌ی بازی‌ها شانسیه و شانس برد همه (و ربات) برابره؛ قرعه‌ی سکه و بازی ۲۰ از random.org\n"
+        f"{LN}\n"
+        "📋 <code>بازی ها</code> — منوی بازی‌ها\n"
+        "💎 <code>موجودی</code> | 🏆 <code>برترین</code> | 🔁 <code>انتقال 25</code> (ریپلای)\n"
+        "✏️ مبلغ رو بعد از اسم بازی بنویس: <code>بازی 50</code> | <code>تاس 50</code> | <code>بازی کازینو 50</code>")
 
 
 def register(bot, admin_ids):
     async def game_chat():
         return int(await db.get("game_group", os.getenv("GAME_GROUP_ID", "0")) or 0)
+
+    plus_handle = gameplus.register(bot, admin_ids, {
+        "rnd_ints": rnd_ints, "rnd_bool": rnd_bool, "FEE": FEE, "MIN_BET": MIN_BET, "MAX_BET": MAX_BET,
+        "name_of": name_of, "game_chat": game_chat})
 
     # ================================================================ shared helpers
     def clamp(bet):
@@ -192,8 +208,8 @@ def register(bot, admin_ids):
         return sum(1 for L in lobbies.values() if L["creator"] == uid)
 
     def bet_head(P):
-        return (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>• {GAME_TITLE[P['game']]}</b>\n"
-                f"👤 سازنده: {esc(P['name'])}\n💎 مبلغ ورودی: <b>{P['bet']:,} الماس</b>\n")
+        return (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>• {GAME_TITLE[P['game']]}</b>\n{LN}\n"
+                f"👤 بازیکن: {esc(P['name'])}\n💎 مبلغ ورودی: <b>{P['bet']:,} الماس</b>\n{LN}\n")
 
     def pot_of(L):
         return L["bet"] * L["kind"]
@@ -268,6 +284,21 @@ def register(bot, admin_ids):
                     [btn("🪙 بنداز!" if vs == "bot" else "👥 ساخت بازی", f"gp:{pid}:go", GREEN)], [cancel]]
             return t, kb(rows)
 
+        if g == "roulette":
+            mode = P["mode"]
+            t = (bet_head(P) + "\n<b>روی چی شرط می‌بندی؟ 👇</b>\n"
+                 f"🔴 قرمز / ⚫ سیاه / زوج / فرد / ۱-۱۸ / ۱۹-۳۶ ← <b>×{RL_SIDE_MULT:g}</b> ({pay_of(bet, RL_SIDE_MULT):,} 💎)\n"
+                 f"🎯 عدد دقیق (۱ تا ۳۶) ← <b>×{RL_EXACT_MULT:g}</b> ({pay_of(bet, RL_EXACT_MULT):,} 💎)\n"
+                 "🍀 اعداد ۱ تا ۳۶ (بدون صفر)؛ شانس همه برابره و عدد از random.org میاد\n"
+                 f"✅ انتخاب تو: <b>{RL_MODES[mode]}{(' ' + str(P['pick'])) if mode == 'exact' and P['pick'] else ''}</b>")
+            def mb(k):
+                return btn(ck(mode == k) + RL_MODES[k], f"gp:{pid}:md:{k}", GREEN if k != "exact" else BLUE)
+            rows = [[mb("red"), mb("black")], [mb("even"), mb("odd")], [mb("low"), mb("high")], [mb("exact")]]
+            if mode == "exact":
+                rows += [[btn(ck(P["pick"] == i) + str(i), f"gp:{pid}:p:{i}", BLUE) for i in range(r, r + 6)] for r in range(1, 37, 6)]
+            rows += [[bet_btn], [btn("🎡 بچرخون!", f"gp:{pid}:go", GREEN)], [cancel]]
+            return t, kb(rows)
+
         # casino
         solo = P["n"] == 1
         rules = "(۷۷۷ > سه‌تا مثل هم > دوتا مثل هم > هیچی > BAR BAR BAR). مساوی شد دوباره می‌چرخن."
@@ -311,6 +342,8 @@ def register(bot, admin_ids):
         P = {"id": next(_ids), "chat": chat, "msg": 0, "owner": uid, "name": name, "game": game, "bet": clamp(bet or MIN_BET),
              "n": 2 if n == 2 else 1, "mode": "even", "vs": "bot", "pick": "h" if game == "coin" else None,
              "view": "main", "state": "setup", "lock": asyncio.Lock()}
+        if game == "roulette":
+            P["mode"] = "red"
         text, markup = panel_view(P)
         m = await botapi.send_banner(chat, text, markup, reply_to=reply_to)
         P["msg"] = m["message_id"]
@@ -445,6 +478,8 @@ def register(bot, admin_ids):
             prize = prize_of(L)
             if wid:
                 await db.add(wid, prize, "game_win")
+            for k, (pu, pn) in enumerate(players):
+                await gameplus.record(pu, pn, L["bet"], k == win)
             lines = "\n".join(f"{'🏆' if k == win else '▫️'} {esc(players[k][1])}: " + " ← ".join(map(str, nums[k]))
                               for k in range(len(players)))
             text = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🍀 شرط تمام شد</b>\n\n{lines}\n\n"
@@ -472,6 +507,8 @@ def register(bot, admin_ids):
             wid, wname = (cid, cname) if res == L["side"] else (jid, jname)
             prize = prize_pvp(L["bet"])
             await db.add(wid, prize, "coin_win")
+            for pu, pn in L["players"]:
+                await gameplus.record(pu, pn, L["bet"], pu == wid)
             nm = lambda x: "شیر 🦁" if x == "h" else "خط ✍️"
             text = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🪙 نتیجه‌ی شیر یا خط</b>\n\n"
                     f"▫️ {esc(cname)}: {nm(L['side'])}\n▫️ {esc(jname)}: {nm('t' if L['side'] == 'h' else 'h')}\n\n"
@@ -514,6 +551,8 @@ def register(bot, admin_ids):
             else:
                 prize = prize_pvp(L["bet"])
                 await db.add(players[winner][0], prize, "casino_win")
+                for i, (pu, pn) in enumerate(players):
+                    await gameplus.record(pu, pn, L["bet"], i == winner)
                 text = head + f"🏆 برنده: <b>{esc(players[winner][1])}</b>\n💎 جایزه: <b>{prize:,}</b> | ➖ مالیات: {tax_pvp(L['bet']):,}"
             await edit_lobby(L, text, kb([[btn(f"🔁 میز جدید ({L['bet']:,} 💎)", f"gr:casino:{L['bet']}:2", GREEN)]]))
         except Exception:
@@ -541,8 +580,11 @@ def register(bot, admin_ids):
         head = f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>• {GAME_TITLE[g]}</b>\n👤 {esc(P['name'])} | 💎 ورودی: {bet:,}\n\n"
         if g == "dice" and P["mode"] == "exact" and not P["pick"]:
             return "🎯 اول عددی که حدس می‌زنی رو انتخاب کن"
+        if g == "roulette" and P["mode"] == "exact" and not P["pick"]:
+            return "🎯 اول عددی که حدس می‌زنی (۱ تا ۳۶) رو انتخاب کن"
         if await db.try_spend(uid, bet, f"{g}_bet") is None:
             return "💎 موجودی کافی نیست"
+        _won = False
         P["state"] = "running"
         try:
             await botapi.edit_banner(P["chat"], P["msg"], head + "⏳ در حال بازی ...", kb([]))
@@ -555,17 +597,33 @@ def register(bot, admin_ids):
                     win, mult = (v % 2 == 0) == (mode == "even"), DICE_PARITY_MULT
                     mine = "زوج" if mode == "even" else "فرد"
                 pay = pay_of(bet, mult) if win else 0
+                _won = win
                 bal = await db.add(uid, pay, "dice_win") if pay else await db.balance(uid)
                 line = f"🏆 بردی! <b>+{pay - bet:,}</b> 💎" if win else f"💥 باختی! <b>-{bet:,}</b> 💎"
                 body = f"🎯 انتخاب تو: {mine}\n🎲 آمد: <b>{v}</b> ({'زوج' if v % 2 == 0 else 'فرد'})\n{line}"
             elif g == "coin":
                 res = P["pick"] if (await rnd_ints(1, 1, 10000))[0] <= int(round(COIN_WIN_P * 10000)) else ("t" if P["pick"] == "h" else "h")
                 nm = lambda x: "شیر 🦁" if x == "h" else "خط ✍️"
+                _won = res == P["pick"]
                 if res == P["pick"]:
                     bal, line = await db.add(uid, bet * 2, "coin_win"), f"🏆 بردی! <b>+{bet:,}</b> 💎"
                 else:
                     bal, line = await db.balance(uid), f"💥 باختی! <b>-{bet:,}</b> 💎"
                 body = f"🪙 انتخاب تو: {nm(P['pick'])}\n🪙 آمد: <b>{nm(res)}</b>\n{line}"
+            elif g == "roulette":
+                v = (await rnd_ints(1, 1, 36))[0]
+                await asyncio.sleep(1.5)
+                mode = P["mode"]
+                color = "🔴" if v in RL_RED else "⚫"
+                win = {"red": v in RL_RED, "black": v not in RL_RED, "even": v % 2 == 0, "odd": v % 2 == 1,
+                       "low": v <= 18, "high": v >= 19, "exact": v == P["pick"]}[mode]
+                mult = RL_EXACT_MULT if mode == "exact" else RL_SIDE_MULT
+                pay = pay_of(bet, mult) if win else 0
+                _won = win
+                bal = await db.add(uid, pay, "roulette_win") if pay else await db.balance(uid)
+                line = f"🏆 بردی! <b>+{pay - bet:,}</b> 💎" if win else f"💥 باختی! <b>-{bet:,}</b> 💎"
+                mine = RL_MODES[mode] + (f" {P['pick']}" if mode == "exact" else "")
+                body = f"🎯 انتخاب تو: {mine}\n🎡 آمد: <b>{v}</b> {color} ({'زوج' if v % 2 == 0 else 'فرد'})\n{line}"
             else:  # casino, solo
                 res_txt, outcome = "", None
                 for _rnd in range(4):                     # tie -> both spin again (max 4 rounds), then refund
@@ -580,6 +638,7 @@ def register(bot, admin_ids):
                         outcome = mrank > brank
                         break
                 reels = None
+                _won = outcome is True
                 if outcome is True:
                     pay, label = pay_of(bet, CASINO_MULT), "🏆 بردی!"
                 elif outcome is False:
@@ -590,6 +649,7 @@ def register(bot, admin_ids):
                 net = pay - bet
                 body = f"{res_txt}{label}\n" + (f"🏆 <b>{net:+,}</b> 💎" if net > 0 else (
                     "🤝 شرطت برگشت" if net == 0 else f"💥 <b>{net:,}</b> 💎"))
+            await gameplus.record(uid, P["name"], bet, _won)
             await finish(P, head + body + f"\n\n💎 موجودی: <b>{db.fmt(bal)}</b>")
         except Exception:
             log.exception("solo game failed, refunding")
@@ -623,7 +683,8 @@ def register(bot, admin_ids):
 
     # ================================================================ group messages
     CMD = {"موجودی": "bal", "برترین": "top", "برترینها": "top", "انتقال": "give", "بازیها": "menu",
-           "کازینو": "casino", "تاس": "dice", "سکه": "coin", "راهنما": "help", "راهنمای": "help"}
+           "کازینو": "casino", "تاس": "dice", "سکه": "coin", "راهنما": "help", "راهنمای": "help",
+           "رولت": "roulette", "جکپات": "jackpot", "تورنمنت": "tourney", "چالش": "chal"}
 
     def parse(t):
         w = t.split()
@@ -643,19 +704,24 @@ def register(bot, admin_ids):
                 return "duel", " ".join(w[1:])
             else:
                 return None, ""
+        if n0 in ("جکپات", "تورنمنت") and len(w) > 1:
+            return None, ""
         cmd = CMD.get(n0)
-        if cmd in ("casino", "dice", "coin") and not (len(w) == 1 or (len(w) == 2 and w[1].isdigit())):
+        if cmd in ("casino", "dice", "coin", "roulette", "chal") and not (len(w) == 1 or (len(w) == 2 and w[1].isdigit())):
             return None, ""                           # «سکه خوبیه» is just chat, not a command
         return cmd, " ".join(w[1:])
 
     def menu_markup():
         return kb([[btn("🎲 بازی دو/سه‌نفره", "gm:duel", GREEN)],
                    [btn("🎲 تاس", "gm:dice", GREEN), btn("🪙 شیر یا خط", "gm:coin", GREEN)],
-                   [btn("🎰 کازینو", "gm:casino", GREEN)],
+                   [btn("🎰 کازینو", "gm:casino", GREEN), btn("🎡 رولت", "gm:roulette", GREEN)],
+                   [btn("🙈 چالش عدد مخفی", "gm:chal", GREEN)],
+                   [btn("💰 جکپات", "gm:jackpot", BLUE), btn("🏁 تورنمنت", "gm:tourney", BLUE)],
                    [btn("🏆 برترین‌ها", "gm:top", RED)]])
 
-    MENU_TEXT = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎮 منوی بازی‌ها</b>\n"
-                 "یک بازی رو بزن تا پنلش باز بشه 👇")
+    MENU_TEXT = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎮 منوی بازی‌ها</b>\n{LN}\n"
+                 f"🍀 همه‌ی بازی‌ها شانسیه؛ شانس برد همه برابره\n"
+                 "👇 یک بازی رو بزن تا پنلش باز بشه")
 
     @bot.on(events.NewMessage(func=lambda e: e.is_group and not e.out))
     async def on_msg(e):
@@ -724,6 +790,8 @@ def register(bot, admin_ids):
             return await botapi.send_text(e.chat_id, HELP, None, reply_to=e.id)
         if cmd == "menu":
             return await botapi.send_banner(e.chat_id, MENU_TEXT, menu_markup(), reply_to=e.id)
+        if cmd in ("jackpot", "tourney", "chal"):
+            return await plus_handle(e, cmd, arg, uid, name)
 
         a = arg.split()
         bet = int(a[0]) if a and a[0].isdigit() else None
@@ -748,6 +816,14 @@ def register(bot, admin_ids):
             lines = [f"{i}. {utils.clean_name(r['name'] or str(r['user_id']))} — {r['diamonds']:,} 💎" for i, r in enumerate(rows, 1)]
             await e.answer()
             return await bot.send_message(e.chat_id, "🏆 **برترین‌ها**\n" + ("\n".join(lines) or "هنوز کسی نیست"))
+        if what == "jackpot":
+            await e.answer()
+            return await botapi.send_text(e.chat_id, await gameplus.jackpot_text(e.sender_id))
+        if what == "tourney":
+            await e.answer()
+            return await botapi.send_text(e.chat_id, await gameplus.tourney_text(e.sender_id))
+        if what == "chal":
+            return await e.answer("🙈 برای ساخت چالش بنویس: چالش 50", alert=True)
         if what not in (*GAME_WORDS.values(), "duel"):
             return await e.answer()
         uid = e.sender_id
@@ -805,6 +881,10 @@ def register(bot, admin_ids):
             P["view"] = "main"
             await e.answer(f"💎 مبلغ ورودی: {P['bet']:,} الماس")
             return await render(P)
+        if act == "md" and g == "roulette" and arg in RL_MODES:
+            P["mode"] = arg
+            await e.answer(RL_MODES[arg] + (" — یه عدد انتخاب کن" if arg == "exact" else ""))
+            return await render(P)
         if act == "md" and g == "dice" and arg in ("even", "odd", "exact"):
             P["mode"] = arg
             await e.answer({"even": "زوج", "odd": "فرد", "exact": "حدس دقیق — یه عدد انتخاب کن"}[arg])
@@ -821,6 +901,8 @@ def register(bot, admin_ids):
             if g == "coin" and arg in ("h", "t"):
                 P["pick"] = arg
             elif g == "dice" and arg.isdigit() and 1 <= int(arg) <= 6:
+                P["pick"] = int(arg)
+            elif g == "roulette" and arg.isdigit() and 1 <= int(arg) <= 36:
                 P["pick"] = int(arg)
             else:
                 return await e.answer()
