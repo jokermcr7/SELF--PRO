@@ -71,12 +71,39 @@ def is_direct(url):
 
 
 # ------------------------------------------------------------------ source resolving (blocking -> run in a thread)
+_COOKIE_FILE = None
+
+
+def _cookie_file():
+    """Optional: YT_COOKIES (Netscape cookies.txt content) lets yt-dlp pass YouTube's bot check on datacenter IPs."""
+    global _COOKIE_FILE
+    txt = os.environ.get("YT_COOKIES", "")
+    if not txt:
+        return None
+    if _COOKIE_FILE is None:
+        import tempfile
+        fd, p = tempfile.mkstemp(suffix=".txt")
+        with os.fdopen(fd, "w") as f:
+            f.write(txt.replace("\\n", "\n"))
+        _COOKIE_FILE = p
+    return _COOKIE_FILE
+
+
 def _ydl(opts=None):
     import yt_dlp
     o = {"quiet": True, "no_warnings": True, "noplaylist": True, "skip_download": True, "socket_timeout": 25,
-         "format": "best[height<=1080]/best"}
+         "ignore_no_formats_error": True, "check_formats": False}
+    if os.environ.get("LIVE_PROXY"):
+        o["proxy"] = os.environ["LIVE_PROXY"]
+    ck = _cookie_file()
+    if ck:
+        o["cookiefile"] = ck
     o.update(opts or {})
     return yt_dlp.YoutubeDL(o)
+
+
+# YouTube clients that return HLS manifests for live streams without needing JS challenges, tried in order
+_CLIENTS = (["ios"], ["web_safari"], ["tv"], ["mweb"], ["android_vr"], None)
 
 
 def _find_live_url(query, words):
@@ -96,8 +123,52 @@ def _find_live_url(query, words):
     return None
 
 
+def pick_media(info):
+    """Choose what ffmpeg should read from a yt-dlp info dict -> (media, headers). media = url or [video_url, audio_url]."""
+    fm = [f for f in (info.get("formats") or []) if f.get("url")]
+    hdr = info.get("http_headers") or {}
+
+    def h(f):
+        return f.get("height") or 0
+
+    def has(f, k):
+        return (f.get(k) or "none") != "none"
+    muxed = [f for f in fm if has(f, "vcodec") and has(f, "acodec") and h(f) <= 1080]
+    hls = [f for f in muxed if "m3u8" in (f.get("protocol") or "")]
+    for pool in (hls, muxed):                                    # live HLS first, then any muxed file
+        if pool:
+            best = max(pool, key=h)
+            return best["url"], best.get("http_headers") or hdr
+    vid = [f for f in fm if has(f, "vcodec") and not has(f, "acodec") and h(f) <= 1080]
+    aud = [f for f in fm if has(f, "acodec") and not has(f, "vcodec")]
+    if vid and aud:                                              # separate tracks: ffmpeg muxes them
+        return [max(vid, key=h)["url"], max(aud, key=lambda f: f.get("abr") or 0)["url"]], hdr
+    if info.get("manifest_url"):
+        return info["manifest_url"], hdr
+    if info.get("url"):
+        return info["url"], hdr
+    return None, hdr
+
+
+def _extract(page):
+    last = None
+    for cl in _CLIENTS:
+        opts = {"extractor_args": {"youtube": {"player_client": cl}}} if cl else {}
+        try:
+            with _ydl(opts) as y:
+                info = y.extract_info(page, download=False)
+            if info and info.get("_type") == "playlist":
+                info = (info.get("entries") or [None])[0] or {}
+            media, hdr = pick_media(info or {})
+            if media:
+                return media, hdr, (info.get("title") or "")
+        except Exception as ex:                                  # noqa: BLE001
+            last = ex
+    raise RuntimeError(str(last)[:140] if last else "هیچ فرمت قابل پخشی پیدا نشد")
+
+
 def resolve_source(src):
-    """-> (media url, headers dict, title). `src` is a preset key or a link."""
+    """-> (media url or [video, audio], headers dict, title). `src` is a preset key or a link."""
     title = ""
     if src in PRESETS:
         name, query, words = PRESETS[src]
@@ -109,27 +180,22 @@ def resolve_source(src):
         page = src
         if is_direct(page):
             return page, {}, src[:60]
-    with _ydl() as y:
-        info = y.extract_info(page, download=False)
-    if info.get("_type") == "playlist":
-        info = (info.get("entries") or [None])[0] or {}
-    url = info.get("url")
-    if not url and info.get("requested_formats"):
-        url = info["requested_formats"][0].get("url")
-    if not url:
-        raise RuntimeError("لینک ویدیو از این منبع در نیومد")
-    return url, info.get("http_headers") or {}, title or (info.get("title") or "")[:60]
+    media, hdr, t = _extract(page)
+    return media, hdr, title or t[:60]
 
 
 # ------------------------------------------------------------------ ffmpeg
 def build_cmd(ff, media, headers, rtmp, quality, force_encode=False):
     cmd = [ff, "-hide_banner", "-loglevel", "warning", "-nostats"]
-    if re.match(r"^https?://", media, re.I):
-        hdr = "".join(f"{k}: {v}\r\n" for k, v in (headers or {}).items() if k.lower() in ("user-agent", "referer", "cookie", "origin"))
-        if hdr:
-            cmd += ["-headers", hdr]
-        cmd += ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
-    cmd += ["-i", media, "-map", "0:v:0?", "-map", "0:a:0?"]
+    medias = media if isinstance(media, (list, tuple)) else [media]
+    for m in medias:
+        if re.match(r"^https?://", m, re.I):
+            hdr = "".join(f"{k}: {v}\r\n" for k, v in (headers or {}).items() if k.lower() in ("user-agent", "referer", "cookie", "origin"))
+            if hdr:
+                cmd += ["-headers", hdr]
+            cmd += ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
+        cmd += ["-i", m]
+    cmd += ["-map", "0:v:0?", "-map", "1:a:0?" if len(medias) > 1 else "0:a:0?"]
     q = QUALITY.get(quality) if quality else None
     if q or force_encode:
         h, kbps = q or (480, 1200)
@@ -311,7 +377,10 @@ async def _start(c, e, uid, rest):
     try:                                                          # fail early when the source is not available
         media, _h, title = await asyncio.to_thread(resolve_source, src)
     except Exception as ex:                                      # noqa: BLE001
-        return await e.edit(f"⚠️ منبع در دسترس نیست: {str(ex)[:120]}")
+        m = str(ex)
+        hint = ("\n(یوتیوب IP سرور رو به‌عنوان ربات می‌شناسه؛ متغیر YT_COOKIES یا LIVE_PROXY رو تنظیم کن یا لینک مستقیم m3u8 بده)"
+                if re.search(r"sign in|not a bot|429|403", m, re.I) else "")
+        return await e.edit(f"⚠️ منبع در دسترس نیست: {m[:120]}{hint}")
     peer = await e.get_input_chat()
     chat_title = getattr(ent, "title", None) or str(e.chat_id)
     try:
