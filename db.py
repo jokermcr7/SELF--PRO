@@ -95,9 +95,6 @@ async def init():
             used INT NOT NULL DEFAULT 0, created TIMESTAMPTZ DEFAULT now());
         CREATE TABLE IF NOT EXISTS code_uses(
             code TEXT, user_id BIGINT, PRIMARY KEY(code, user_id));
-        CREATE TABLE IF NOT EXISTS jp_tickets(day TEXT, user_id BIGINT, name TEXT, n INT NOT NULL DEFAULT 0, PRIMARY KEY(day, user_id));
-        CREATE TABLE IF NOT EXISTS tourney(week TEXT, user_id BIGINT, name TEXT, games INT NOT NULL DEFAULT 0,
-            wins INT NOT NULL DEFAULT 0, wagered BIGINT NOT NULL DEFAULT 0, PRIMARY KEY(week, user_id));
         CREATE TABLE IF NOT EXISTS receipts(
             id SERIAL PRIMARY KEY, user_id BIGINT NOT NULL, amount BIGINT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending', created TIMESTAMPTZ DEFAULT now());

@@ -1,6 +1,6 @@
 """Diamond games (all commands in Persian), played ONLY in the special game group. Runs on the manager bot.
 
-Games (v1.8: + رولت، چالش، جکپات، تورنمنت), each opens a button panel (banner + coloured buttons):
+Games (+ رولت، چالش), each opens a button panel (banner + coloured buttons):
   بازی 20  دونفره یا سه‌نفره (کاملاً شانسی؛ عدد بزرگ‌تر همه‌ی الماس‌ها رو می‌بره) — دونفره با ربات هم میشه (BOT_WIN_PERCENT، پیش‌فرض ۵۰ برد / ۵۰ باخت)
   تاس      زوج / فرد (×1.5)  یا  حدس دقیق (×2)  — against the bot
   کازینو   تعیین مبلغ ورودی + تک‌نفره (اسلات با ربات) یا دونفره (دو بازیکن با هم)
@@ -183,7 +183,6 @@ HELP = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎮 راهن
         "🪙 <code>سکه</code> — شیر یا خط با ربات <b>×2</b> یا با یه کاربر\n"
         "🎡 <code>رولت</code> — رنگ/زوج‌وفرد/بازه <b>×2</b> یا عدد دقیق ۱ تا ۳۶ <b>×36</b>\n"
         "🙈 <code>چالش 50</code> — دو نفر عدد مخفی می‌زنن؛ random.org عدد هدف رو می‌ده\n"
-        "💰 <code>جکپات</code> — صندوق شبانه | 🏁 <code>تورنمنت</code> — جدول هفتگی با جایزه\n"
         f"{LN}\n"
         "🍀 همه‌ی بازی‌ها شانسیه و شانس برد همه (و ربات) برابره؛ قرعه‌ی سکه و بازی ۲۰ از random.org\n"
         f"{LN}\n"
@@ -478,8 +477,6 @@ def register(bot, admin_ids):
             prize = prize_of(L)
             if wid:
                 await db.add(wid, prize, "game_win")
-            for k, (pu, pn) in enumerate(players):
-                await gameplus.record(pu, pn, L["bet"], k == win)
             lines = "\n".join(f"{'🏆' if k == win else '▫️'} {esc(players[k][1])}: " + " ← ".join(map(str, nums[k]))
                               for k in range(len(players)))
             text = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🍀 شرط تمام شد</b>\n\n{lines}\n\n"
@@ -507,8 +504,6 @@ def register(bot, admin_ids):
             wid, wname = (cid, cname) if res == L["side"] else (jid, jname)
             prize = prize_pvp(L["bet"])
             await db.add(wid, prize, "coin_win")
-            for pu, pn in L["players"]:
-                await gameplus.record(pu, pn, L["bet"], pu == wid)
             nm = lambda x: "شیر 🦁" if x == "h" else "خط ✍️"
             text = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🪙 نتیجه‌ی شیر یا خط</b>\n\n"
                     f"▫️ {esc(cname)}: {nm(L['side'])}\n▫️ {esc(jname)}: {nm('t' if L['side'] == 'h' else 'h')}\n\n"
@@ -551,8 +546,6 @@ def register(bot, admin_ids):
             else:
                 prize = prize_pvp(L["bet"])
                 await db.add(players[winner][0], prize, "casino_win")
-                for i, (pu, pn) in enumerate(players):
-                    await gameplus.record(pu, pn, L["bet"], i == winner)
                 text = head + f"🏆 برنده: <b>{esc(players[winner][1])}</b>\n💎 جایزه: <b>{prize:,}</b> | ➖ مالیات: {tax_pvp(L['bet']):,}"
             await edit_lobby(L, text, kb([[btn(f"🔁 میز جدید ({L['bet']:,} 💎)", f"gr:casino:{L['bet']}:2", GREEN)]]))
         except Exception:
@@ -649,7 +642,6 @@ def register(bot, admin_ids):
                 net = pay - bet
                 body = f"{res_txt}{label}\n" + (f"🏆 <b>{net:+,}</b> 💎" if net > 0 else (
                     "🤝 شرطت برگشت" if net == 0 else f"💥 <b>{net:,}</b> 💎"))
-            await gameplus.record(uid, P["name"], bet, _won)
             await finish(P, head + body + f"\n\n💎 موجودی: <b>{db.fmt(bal)}</b>")
         except Exception:
             log.exception("solo game failed, refunding")
@@ -684,7 +676,7 @@ def register(bot, admin_ids):
     # ================================================================ group messages
     CMD = {"موجودی": "bal", "برترین": "top", "برترینها": "top", "انتقال": "give", "بازیها": "menu",
            "کازینو": "casino", "تاس": "dice", "سکه": "coin", "راهنما": "help", "راهنمای": "help",
-           "رولت": "roulette", "جکپات": "jackpot", "تورنمنت": "tourney", "چالش": "chal"}
+           "رولت": "roulette", "چالش": "chal"}
 
     def parse(t):
         w = t.split()
@@ -704,8 +696,6 @@ def register(bot, admin_ids):
                 return "duel", " ".join(w[1:])
             else:
                 return None, ""
-        if n0 in ("جکپات", "تورنمنت") and len(w) > 1:
-            return None, ""
         cmd = CMD.get(n0)
         if cmd in ("casino", "dice", "coin", "roulette", "chal") and not (len(w) == 1 or (len(w) == 2 and w[1].isdigit())):
             return None, ""                           # «سکه خوبیه» is just chat, not a command
@@ -716,7 +706,6 @@ def register(bot, admin_ids):
                    [btn("🎲 تاس", "gm:dice", GREEN), btn("🪙 شیر یا خط", "gm:coin", GREEN)],
                    [btn("🎰 کازینو", "gm:casino", GREEN), btn("🎡 رولت", "gm:roulette", GREEN)],
                    [btn("🙈 چالش عدد مخفی", "gm:chal", GREEN)],
-                   [btn("💰 جکپات", "gm:jackpot", BLUE), btn("🏁 تورنمنت", "gm:tourney", BLUE)],
                    [btn("🏆 برترین‌ها", "gm:top", RED)]])
 
     MENU_TEXT = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎮 منوی بازی‌ها</b>\n{LN}\n"
@@ -790,7 +779,7 @@ def register(bot, admin_ids):
             return await botapi.send_text(e.chat_id, HELP, None, reply_to=e.id)
         if cmd == "menu":
             return await botapi.send_banner(e.chat_id, MENU_TEXT, menu_markup(), reply_to=e.id)
-        if cmd in ("jackpot", "tourney", "chal"):
+        if cmd == "chal":
             return await plus_handle(e, cmd, arg, uid, name)
 
         a = arg.split()
@@ -816,12 +805,6 @@ def register(bot, admin_ids):
             lines = [f"{i}. {utils.clean_name(r['name'] or str(r['user_id']))} — {r['diamonds']:,} 💎" for i, r in enumerate(rows, 1)]
             await e.answer()
             return await bot.send_message(e.chat_id, "🏆 **برترین‌ها**\n" + ("\n".join(lines) or "هنوز کسی نیست"))
-        if what == "jackpot":
-            await e.answer()
-            return await botapi.send_text(e.chat_id, await gameplus.jackpot_text(e.sender_id))
-        if what == "tourney":
-            await e.answer()
-            return await botapi.send_text(e.chat_id, await gameplus.tourney_text(e.sender_id))
         if what == "chal":
             return await e.answer("🙈 برای ساخت چالش بنویس: چالش 50", alert=True)
         if what not in (*GAME_WORDS.values(), "duel"):
