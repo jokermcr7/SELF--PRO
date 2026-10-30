@@ -113,19 +113,26 @@ _CLIENTS = (["ios"], ["web_safari"], ["tv"], ["mweb"], ["android_vr"], None)
 
 
 def _find_live_url(query, words):
-    """Search YouTube for a *currently live* video whose channel name matches one of `words`."""
-    with _ydl({"extract_flat": True}) as y:
-        res = y.extract_info(f"ytsearch12:{query}", download=False)
-    cands = []
-    for it in (res or {}).get("entries") or []:
-        ch = ((it.get("channel") or it.get("uploader") or "") + " " + (it.get("title") or "")).lower()
-        if any(w in ch for w in words):
-            cands.append(it)
-    cands.sort(key=lambda i: 0 if i.get("live_status") == "is_live" else 1)
-    for it in cands[:4]:
-        url = it.get("url") or f"https://www.youtube.com/watch?v={it.get('id')}"
-        if it.get("live_status") in ("is_live", None):
-            return url
+    """Search YouTube with the *Live* filter for a currently live video whose channel name matches `words`."""
+    from urllib.parse import quote_plus
+    urls = (f"https://www.youtube.com/results?search_query={quote_plus(query)}&sp=EgJAAQ%253D%253D",   # filter: Live
+            f"ytsearch12:{query}")
+    for u in urls:
+        try:
+            with _ydl({"extract_flat": True, "playlistend": 15}) as y:
+                res = y.extract_info(u, download=False)
+        except Exception as ex:                                  # noqa: BLE001
+            log.warning("live search failed (%s): %s", u[:30], str(ex)[:120])
+            continue
+        cands = []
+        for it in (res or {}).get("entries") or []:
+            ch = ((it.get("channel") or it.get("uploader") or "") + " " + (it.get("title") or "")).lower()
+            if any(w in ch for w in words):
+                cands.append(it)
+        cands.sort(key=lambda i: 0 if i.get("live_status") == "is_live" else 1)
+        for it in cands[:3]:
+            if it.get("live_status") in ("is_live", None):
+                return it.get("url") or f"https://www.youtube.com/watch?v={it.get('id')}"
     return None
 
 
@@ -157,20 +164,32 @@ def pick_media(info):
 
 
 def _extract(page):
-    last = None
-    for cl in _CLIENTS:
-        opts = {"extractor_args": {"youtube": {"player_client": cl}}} if cl else {}
-        try:
-            with _ydl(opts) as y:
-                info = y.extract_info(page, download=False)
-            if info and info.get("_type") == "playlist":
-                info = (info.get("entries") or [None])[0] or {}
-            media, hdr = pick_media(info or {})
-            if media:
-                return media, hdr, (info.get("title") or "")
-        except Exception as ex:                                  # noqa: BLE001
-            last = ex
-    raise RuntimeError(str(last)[:140] if last else "هیچ فرمت قابل پخشی پیدا نشد")
+    errs = []
+    for strict in (True, False):                                 # strict = real YouTube error text; then the tolerant pass
+        for cl in _CLIENTS:
+            opts = {"extractor_args": {"youtube": {"player_client": cl}}} if cl else {}
+            if strict:
+                opts["ignore_no_formats_error"] = False
+            try:
+                with _ydl(opts) as y:
+                    info = y.extract_info(page, download=False)
+                if info and info.get("_type") == "playlist":
+                    info = (info.get("entries") or [None])[0] or {}
+                media, hdr = pick_media(info or {})
+                if media:
+                    return media, hdr, (info.get("title") or "")
+                errs.append(f"{(cl or ['default'])[0]}: بدون فرمت")
+            except Exception as ex:                              # noqa: BLE001
+                m = re.sub(r"\x1b\[[0-9;]*m|ERROR:\s*|\[youtube\]\s*[\w-]+:\s*", "", str(ex)).strip()
+                errs.append(f"{(cl or ['default'])[0]}: {m[:90]}")
+        if strict and errs:
+            log.warning("live source strict pass failed: %s", " || ".join(errs)[:600])
+    uniq = []
+    for x in errs:
+        k = x.split(": ", 1)[-1]
+        if k not in [u.split(": ", 1)[-1] for u in uniq]:
+            uniq.append(x)
+    raise RuntimeError(" | ".join(uniq[:3])[:300] or "هیچ فرمت قابل پخشی پیدا نشد")
 
 
 def resolve_source(src):
@@ -426,7 +445,7 @@ async def _start(c, e, uid, rest):
         m = str(ex)
         hint = ("\n(یوتیوب IP سرور رو به‌عنوان ربات می‌شناسه؛ متغیر YT_COOKIES یا LIVE_PROXY رو تنظیم کن یا لینک مستقیم m3u8 بده)"
                 if re.search(r"sign in|not a bot|429|403", m, re.I) else "")
-        return await e.edit(f"⚠️ منبع در دسترس نیست: {m[:120]}{hint}")
+        return await e.edit(f"⚠️ منبع در دسترس نیست: {m[:320]}{hint}")
     peer = await e.get_input_chat()
     chat_title = getattr(ent, "title", None) or str(e.chat_id)
     try:

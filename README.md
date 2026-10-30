@@ -179,3 +179,6 @@
 
 ### 1.9.3 (ffmpeg)
 - کد -11 یعنی ffmpegِ استاتیکِ همراه `imageio-ffmpeg` روی سرور کرش می‌کنه (SIGSEGV؛ معمولاً موقع DNS). راهش ffmpeg سیستمی است: توی Variables ریلوی `RAILPACK_DEPLOY_APT_PACKAGES=ffmpeg` و `NIXPACKS_APT_PKGS=ffmpeg` رو اضافه کن و Redeploy بزن. `.لایو وضعیت` نوع ffmpeg (`system` یا `static`) رو نشون می‌ده.
+
+### 1.9.4
+- پیدا کردن لایو شبکه حالا با فیلتر «زنده» یوتیوب انجام میشه (فقط ویدیوهای در حال پخش)، و اگه فرمتی پیدا نشد دلیل واقعی هر کلاینت یوتیوب (مثلاً «Sign in to confirm you're not a bot») توی پیام خطا میاد.
