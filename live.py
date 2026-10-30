@@ -10,6 +10,7 @@ The video is copied when it is already H.264 (very light on the server); otherwi
 it is re-encoded with libx264. The stream key is sent only to the owner's Saved Messages.
 """
 import asyncio
+import collections
 import logging
 import os
 import random
@@ -186,7 +187,7 @@ def resolve_source(src):
 
 # ------------------------------------------------------------------ ffmpeg
 def build_cmd(ff, media, headers, rtmp, quality, force_encode=False):
-    cmd = [ff, "-hide_banner", "-loglevel", "warning", "-nostats"]
+    cmd = [ff, "-hide_banner", "-nostdin", "-loglevel", "warning", "-nostats", "-progress", "pipe:1", "-stats_period", "2"]
     medias = media if isinstance(media, (list, tuple)) else [media]
     for m in medias:
         if re.match(r"^https?://", m, re.I):
@@ -194,7 +195,7 @@ def build_cmd(ff, media, headers, rtmp, quality, force_encode=False):
             if hdr:
                 cmd += ["-headers", hdr]
             cmd += ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
-        cmd += ["-i", m]
+        cmd += ["-re", "-i", m]
     cmd += ["-map", "0:v:0?", "-map", "1:a:0?" if len(medias) > 1 else "0:a:0?"]
     q = QUALITY.get(quality) if quality else None
     if q or force_encode:
@@ -227,19 +228,33 @@ async def _supervisor(c, uid, st):
                 continue
             cmd = build_cmd(ff, media, headers, st["rtmp"], st["quality"], force)
             t0 = time.time()
-            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+            proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             st["proc"] = proc
             st["encode"] = force or bool(QUALITY.get(st["quality"] or ""))
-            err = b""
-            try:
-                err = await proc.stderr.read()                       # returns when ffmpeg exits
-            except Exception:                                        # noqa: BLE001
-                pass
+            st["log"].clear()
+
+            async def read_err():
+                async for line in proc.stderr:
+                    t = line.decode("utf-8", "ignore").strip()
+                    if t:
+                        st["log"].append(t[:200])
+                        log.warning("ffmpeg[%s]: %s", uid, t[:200])
+
+            async def read_prog():
+                async for line in proc.stdout:
+                    t = line.decode("utf-8", "ignore").strip()
+                    if t.startswith(("total_size=", "out_time=", "speed=", "bitrate=")):
+                        k, _, v = t.partition("=")
+                        st["prog"][k] = v
+
+            rt = [asyncio.create_task(read_err()), asyncio.create_task(read_prog())]
             await proc.wait()
+            await asyncio.gather(*rt, return_exceptions=True)
+            err = " | ".join(st["log"]).encode()
             if st["stop"]:
                 break
             ran = time.time() - t0
-            st["error"] = err.decode("utf-8", "ignore")[-160:].strip().replace("\n", " ")
+            st["error"] = err.decode("utf-8", "ignore")[-300:].strip()
             if ran < 30:
                 fails += 1
                 if not force and not st["encode"]:
@@ -282,6 +297,25 @@ async def _rtmp(c, peer):
         r = await c(functions.phone.GetGroupCallStreamRtmpUrlRequest(peer=peer))
     url = r.url if r.url.endswith("/") else r.url + "/"
     return url + r.key, r.url, r.key
+
+
+def _sent_bytes(st):
+    v = (st.get("prog") or {}).get("total_size", "0")
+    return int(v) if str(v).isdigit() else 0
+
+
+def _diag(st):
+    p = st.get("proc")
+    alive = p is not None and p.returncode is None
+    pr = st.get("prog") or {}
+    line = (f"ffmpeg {'روشن' if alive else 'خاموش (کد ' + str(getattr(p, 'returncode', '?')) + ')'}"
+            f" | ارسال‌شده: {_sent_bytes(st) // 1024} KB | سرعت: {pr.get('speed', '-')}")
+    last = list(st.get("log") or [])[-3:]
+    if last:
+        line += "\nخطای ffmpeg: " + " | ".join(last)
+    elif st.get("error"):
+        line += "\n" + st["error"][:200]
+    return line
 
 
 def _fmt_dur(s):
@@ -396,15 +430,21 @@ async def _start(c, e, uid, rest):
             return await e.edit("⚠️ یه چت صوتی/ویدیویی یا لایو دیگه توی این چت روشنه؛ اول تمومش کن")
         return await e.edit(f"⚠️ ساخت لایو ناموفق بود ({msg})")
     st = {"chat_id": e.chat_id, "chat_title": chat_title, "call": call, "peer": peer, "src": src, "rtmp": full, "url": url, "key": key,
-          "quality": await db.uget(uid, "live_q", "") or "", "started": time.time(), "stop": False, "title": title, "error": "", "proc": None}
+          "quality": await db.uget(uid, "live_q", "") or "", "started": time.time(), "stop": False, "title": title, "error": "", "proc": None,
+          "log": collections.deque(maxlen=8), "prog": {}}
     _lives[uid] = st
     st["task"] = asyncio.create_task(_supervisor(c, uid, st))
-    await asyncio.sleep(6)
-    ok = st.get("proc") is not None and st["proc"].returncode is None
     await c.send_message("me", f"🔑 **RTMP لایوی {chat_title}** (برای OBS)\n`{url}`\nکلید: `{key}`")
-    await e.edit(("🔴 **لایو شروع شد!**" if ok else "🟡 **لایو ساخته شد؛ منبع داره وصل میشه...**")
-                 + f"\n📺 {title or src[:40]}\n💬 {chat_title}\n"
-                 "توی بالای گروه/کانال لایو رو می‌بینی. `.لایو وضعیت` | `.لایو توقف`")
+    sent = False
+    for _ in range(20):                                           # up to ~20 s: wait until bytes really flow to Telegram
+        await asyncio.sleep(1)
+        p = st.get("proc")
+        if p is not None and p.returncode is None and _sent_bytes(st) > 30000:
+            sent = True
+            break
+    head = "🔴 **لایو شروع شد و داره پخش میشه!**" if sent else "🟡 **لایو ساخته شد ولی هنوز تصویری به تلگرام نرسیده**"
+    tail = "" if sent else ("\n" + _diag(st) + "\nچند ثانیه صبر کن؛ اگه نیومد `.لایو وضعیت` بزن و متنش رو بفرست.")
+    await e.edit(f"{head}\n📺 {title or src[:40]}\n💬 {chat_title}{tail}\n`.لایو وضعیت` | `.لایو توقف`")
 
 
 async def _status(e, uid):
@@ -415,7 +455,7 @@ async def _status(e, uid):
     alive = p is not None and p.returncode is None
     await e.edit(f"{'🔴 زنده' if alive and not st.get('dead') else '🟡 در حال اتصال/قطع'}\n💬 {st['chat_title']}\n📺 {st.get('title') or st['src'][:40]}\n"
                  f"⏱ {_fmt_dur(time.time() - st['started'])}\n🎞 {'بازکدگذاری ' + (st['quality'] or '480') + 'p' if st.get('encode') else 'کپی مستقیم (بدون افت کیفیت)'}"
-                 + (f"\n⚠️ {st['error']}" if st.get("error") and not alive else ""))
+                 + f"\n📤 {_diag(st)}")
 
 
 async def _stop_cmd(c, e, uid):
