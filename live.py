@@ -29,12 +29,18 @@ LIVE_MAX = int(os.environ.get("LIVE_MAX", "5") or 5)          # how many lives m
 
 # name -> (display name, YouTube search query, words that must appear in the channel name)
 PRESETS = {
-    "اینترنشنال": ("📡 ایران اینترنشنال", "Iran International live", ("iran international", "iranintl", "ایران اینترنشنال")),
-    "بی_بی_سی": ("📡 بی‌بی‌سی فارسی", "BBC Persian live", ("bbc",)),
-    "من_و_تو": ("📡 من و تو", "Manoto live", ("manoto", "من و تو")),
-    "صدای_آمریکا": ("📡 صدای آمریکا (VOA فارسی)", "VOA Persian live", ("voa", "voice of america", "صدای آمریکا")),
-    "یورونیوز": ("📡 یورونیوز فارسی", "Euronews Persian live", ("euronews",)),
+    "اینترنشنال": ("📡 ایران اینترنشنال", "Iran International live", ("iran international", "iranintl", "ایران اینترنشنال"),
+                   ("iran international", "iranintl", "iran intl")),
+    "بی_بی_سی": ("📡 بی‌بی‌سی فارسی", "BBC Persian live", ("bbc",), ("bbc persian", "bbc farsi", "bbc news persian", "bbc news farsi")),
+    "من_و_تو": ("📡 من و تو", "Manoto live", ("manoto", "من و تو"), ("manoto",)),
+    "صدای_آمریکا": ("📡 صدای آمریکا (VOA فارسی)", "VOA Persian live", ("voa", "voice of america", "صدای آمریکا"),
+                    ("voa persian", "voa farsi", "voa dari", "irinn")),
+    "یورونیوز": ("📡 یورونیوز فارسی", "Euronews Persian live", ("euronews",), ("euronews persian", "euronews farsi")),
 }
+# IPTV playlists searched first: direct HLS links do not go through YouTube (which blocks datacenter IPs).
+# Override with LIVE_PLAYLISTS="url1,url2" (M3U lists).
+PLAYLISTS = [u.strip() for u in (os.environ.get("LIVE_PLAYLISTS") or
+             "https://iptv-org.github.io/iptv/languages/fas.m3u,https://iptv-org.github.io/iptv/categories/news.m3u").split(",") if u.strip()]
 ALIAS = {"ایران_اینترنشنال": "اینترنشنال", "iranintl": "اینترنشنال", "iran_international": "اینترنشنال", "ایران_اینترنشنال_تی_وی": "اینترنشنال",
          "bbc": "بی_بی_سی", "بی‌بی‌سی": "بی_بی_سی", "بیبیسی": "بی_بی_سی", "bbc_persian": "بی_بی_سی",
          "manoto": "من_و_تو", "منوتو": "من_و_تو", "من_وتو": "من_و_تو",
@@ -73,6 +79,8 @@ def pick_preset(word):
 
 
 def is_direct(url):
+    if re.search(r"\.m3u(\?|$)", url, re.I):
+        return False                                             # playlist of channels, handled in resolve_source
     return bool(re.match(r"^(rtmps?|rtsp|udp|srt)://", url, re.I) or re.search(r"\.(m3u8|mpd|ts|mp4|flv)(\?|$)", url, re.I))
 
 
@@ -237,28 +245,105 @@ def _extract(page):
     raise RuntimeError(" | ".join(uniq[:3])[:300] or "هیچ فرمت قابل پخشی پیدا نشد")
 
 
+_PL_CACHE: dict = {}            # playlist url -> (time, [(name, url)])
+
+
+def _playlist(url):
+    hit = _PL_CACHE.get(url)
+    if hit and time.time() - hit[0] < 3600:
+        return hit[1]
+    import urllib.request
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=20) as r:
+        txt = r.read(12_000_000).decode("utf-8", "ignore")
+    items, name = [], ""
+    for ln in txt.splitlines():
+        ln = ln.strip()
+        if ln.startswith("#EXTINF"):
+            name = ln.rsplit(",", 1)[-1].strip()
+        elif ln and not ln.startswith("#") and re.match(r"^(https?|rtmps?)://", ln, re.I):
+            items.append((name, ln))
+            name = ""
+    _PL_CACHE[url] = (time.time(), items)
+    return items
+
+
+def _is_youtube(u):
+    return bool(re.search(r"(youtube\.com|youtu\.be)", u, re.I))
+
+
+def _from_playlists(words):
+    """Candidate links for a channel from the IPTV playlists: direct streams first, YouTube links last."""
+    out = []
+    for pl in PLAYLISTS:
+        try:
+            for name, u in _playlist(pl):
+                if any(w in name.lower() for w in words) and u not in [x[1] for x in out]:
+                    out.append((name, u))
+        except Exception as ex:                                  # noqa: BLE001
+            log.warning("live playlist %s failed: %s", pl[:50], str(ex)[:100])
+    out.sort(key=lambda x: _is_youtube(x[1]))
+    return out
+
+
+def _first_working(cands, limit=8):
+    """Probe direct candidates in parallel; return the first (in list order) that really serves data."""
+    from concurrent.futures import ThreadPoolExecutor
+    direct = [(n, u) for n, u in cands if not _is_youtube(u)][:limit]
+    if not direct:
+        return None
+
+    def ok(item):
+        try:
+            _probe(item[1], {})
+            return True
+        except Exception:                                        # noqa: BLE001
+            return False
+    with ThreadPoolExecutor(max_workers=min(8, len(direct))) as ex:
+        res = list(ex.map(ok, direct))
+    for item, good in zip(direct, res):
+        if good:
+            return item
+    return None
+
+
 def resolve_source(src):
     """-> (media url or [video, audio], headers dict, title). `src` is a preset key or a link."""
     title = ""
+    notes = []
     if src in PRESETS:
-        name, query, words = PRESETS[src]
+        name, query, words, plwords = PRESETS[src]
+        cands = _from_playlists(plwords)
+        good = _first_working(cands)
+        if good:
+            return good[1], {}, name
+        yt_from_pl = next((u for _n, u in cands if _is_youtube(u)), None)
+        if cands:
+            notes.append(f"{len(cands)} لینک پلی‌لیست مرده بود")
         hit = _PAGE_CACHE.get(src)
         page = hit[1] if hit and time.time() - hit[0] < 1800 else None
         if not page:
-            page = _find_live_url(query, words)
+            page = yt_from_pl or _find_live_url(query, words)
             if not page:
-                raise RuntimeError("الان لایو زنده‌ای از این شبکه پیدا نشد")
+                raise RuntimeError("الان لایو زنده‌ای از این شبکه پیدا نشد" + (f" ({'، '.join(notes)})" if notes else ""))
             _PAGE_CACHE[src] = (time.time(), page)
         title = name
     else:
         page = src
-        if is_direct(page):
+        if re.search(r"\.m3u(\?|$)", page, re.I):               # an M3U playlist link: first working channel in it
+            items = _playlist(page)
+            good = _first_working(items, 12)
+            if good:
+                return good[1], {}, (good[0] or "")[:60]
+            page = next((u for _n, u in items if _is_youtube(u)), None)
+            if not page:
+                raise RuntimeError("هیچ لینک کارکننده‌ای توی این پلی‌لیست نبود")
+        elif is_direct(page):
             return page, {}, src[:60]
     try:
         media, hdr, t = _extract(page)
-    except Exception:
+    except Exception as ex:
         _PAGE_CACHE.pop(src, None)
-        raise
+        raise RuntimeError(str(ex) + (f" | {'، '.join(notes)}" if notes else "")) from ex
     return media, hdr, title or t[:60]
 
 
