@@ -37,10 +37,19 @@ PRESETS = {
                     ("voa persian", "voa farsi", "voa dari", "irinn")),
     "یورونیوز": ("📡 یورونیوز فارسی", "Euronews Persian live", ("euronews",), ("euronews persian", "euronews farsi")),
 }
+# known direct streams (tried first; dead ones are skipped automatically). Add your own with LIVE_EXTRA="preset=url,..."
+STATIC = {"اینترنشنال": [("Iran International", "https://dev-live.livetvstream.co.uk/LS-63503-4/index.m3u8")]}
+for _kv in (os.environ.get("LIVE_EXTRA") or "").split(","):
+    if "=" in _kv:
+        _k, _u = _kv.split("=", 1)
+        STATIC.setdefault(_k.strip(), []).append((_k.strip(), _u.strip()))
+VLC_UA = {"User-Agent": "VLC/3.0.20 LibVLC/3.0.20"}
+_PL_ERRS: list = []
+
 # IPTV playlists searched first: direct HLS links do not go through YouTube (which blocks datacenter IPs).
 # Override with LIVE_PLAYLISTS="url1,url2" (M3U lists).
 PLAYLISTS = [u.strip() for u in (os.environ.get("LIVE_PLAYLISTS") or
-             "https://iptv-org.github.io/iptv/languages/fas.m3u,https://iptv-org.github.io/iptv/categories/news.m3u").split(",") if u.strip()]
+             "https://iptv-org.github.io/iptv/countries/ir.m3u,https://iptv-org.github.io/iptv/languages/fas.m3u,https://iptv-org.github.io/iptv/categories/news.m3u").split(",") if u.strip()]
 ALIAS = {"ایران_اینترنشنال": "اینترنشنال", "iranintl": "اینترنشنال", "iran_international": "اینترنشنال", "ایران_اینترنشنال_تی_وی": "اینترنشنال",
          "bbc": "بی_بی_سی", "بی‌بی‌سی": "بی_بی_سی", "بیبیسی": "بی_بی_سی", "bbc_persian": "بی_بی_سی",
          "manoto": "من_و_تو", "منوتو": "من_و_تو", "من_وتو": "من_و_تو",
@@ -281,6 +290,7 @@ def _from_playlists(words):
                     out.append((name, u))
         except Exception as ex:                                  # noqa: BLE001
             log.warning("live playlist %s failed: %s", pl[:50], str(ex)[:100])
+            _PL_ERRS.append(f"{pl.rsplit('/', 1)[-1]}: {type(ex).__name__}")
     out.sort(key=lambda x: _is_youtube(x[1]))
     return out
 
@@ -294,7 +304,7 @@ def _first_working(cands, limit=8):
 
     def ok(item):
         try:
-            _probe(item[1], {})
+            _probe(item[1], VLC_UA)
             return True
         except Exception:                                        # noqa: BLE001
             return False
@@ -312,10 +322,14 @@ def resolve_source(src):
     notes = []
     if src in PRESETS:
         name, query, words, plwords = PRESETS[src]
-        cands = _from_playlists(plwords)
+        _PL_ERRS.clear()
+        cands = list(STATIC.get(src, [])) + _from_playlists(plwords)
+        cands.sort(key=lambda x: _is_youtube(x[1]))
         good = _first_working(cands)
         if good:
-            return good[1], {}, name
+            return good[1], dict(VLC_UA), name
+        if _PL_ERRS:
+            notes.append("پلی‌لیست: " + "، ".join(_PL_ERRS[:3]))
         yt_from_pl = next((u for _n, u in cands if _is_youtube(u)), None)
         if cands:
             notes.append(f"{len(cands)} لینک پلی‌لیست مرده بود")
@@ -333,7 +347,7 @@ def resolve_source(src):
             items = _playlist(page)
             good = _first_working(items, 12)
             if good:
-                return good[1], {}, (good[0] or "")[:60]
+                return good[1], dict(VLC_UA), (good[0] or "")[:60]
             page = next((u for _n, u in items if _is_youtube(u)), None)
             if not page:
                 raise RuntimeError("هیچ لینک کارکننده‌ای توی این پلی‌لیست نبود")
