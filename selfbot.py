@@ -27,6 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 import db
 import forcejoin
 import extras
+import settingsbackup
 import live
 import utils
 
@@ -1815,6 +1816,7 @@ FA_LONG = {
 }
 extras.install(COMMANDS, FA, norm)
 live.install(COMMANDS, FA)
+settingsbackup.install(COMMANDS, FA)
 ALIAS = {norm(k): v for k, v in {**FA, **FA_LONG}.items()}
 
 

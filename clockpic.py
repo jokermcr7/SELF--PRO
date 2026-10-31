@@ -2,13 +2,14 @@
 
 render(raw_base_photo_bytes | None, style, color, now) -> JPEG bytes (800x800)
 
-24 designs x 9 colors. The base photo is the user's own profile picture (or a gradient if there is none);
+29 designs x 9 colors. The base photo is the user's own profile picture (or a gradient if there is none);
 every design is drawn ON TOP of it, so the photo stays visible.
 """
 import functools
 import io
 import math
 import os
+import random
 from datetime import datetime
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
@@ -1329,6 +1330,218 @@ def _horizon(img, c, hm, date, now):
 
 STYLES += [("skeleton", "⚙️ ساعت اسکلتی"), ("horizon", "🌍 افق سیاره")]
 _DRAW.update({"skeleton": _skeleton, "horizon": _horizon})
+
+
+# ------------------------------------------------------------------ پوستر ۱ تا ۵ (v1.9.8): the five designs of the reference sheet
+# Two-tone brush digits (italic lean, ragged dry-brush edges), Jalali date "1405 / 08 / 09" and five very different
+# frames. Everything is drawn ON the user's own photo, so any picture works (the accent colour replaces the red).
+def _dtxt(date):
+    return date.replace("/", " / ")
+
+
+def _luma(img):
+    return img.convert("L").resize((1, 1), Image.BOX).getpixel((0, 0))
+
+
+def _track(img, text, pos, font, fill, track=3.0):
+    """Letter-spaced text centred on pos."""
+    widths = [font.getlength(ch) for ch in text]
+    x = pos[0] - (sum(widths) + track * (len(text) - 1)) / 2
+    layer = _layer()
+    d = ImageDraw.Draw(layer)
+    for ch, w in zip(text, widths):
+        d.text((x, pos[1]), ch, font=font, fill=fill, anchor="lm")
+        x += w + track
+    return _over(img, layer)
+
+
+def _vgrad2(top, bot):
+    g = Image.linear_gradient("L").resize((S, S))
+    return Image.composite(Image.new("RGB", (S, S), bot), Image.new("RGB", (S, S), top), g).convert("RGBA")
+
+
+def _alpha_ramp(y0, y1, a0, a1, power=1.0):
+    """Full-width vertical alpha ramp (L mask) from y0 (a0) to y1 (a1); 0 above y0, a1 below y1."""
+    m = Image.new("L", (S, S), 0)
+    d = ImageDraw.Draw(m)
+    for y in range(int(y0), S):
+        t = max(0.0, min(1.0, (y - y0) / max(1, y1 - y0))) ** power
+        d.line([(0, y), (S, y)], fill=int(a0 + (a1 - a0) * t))
+    return m
+
+
+def _paint(img, mask, col, alpha=1.0):
+    layer = Image.new("RGBA", (S, S), tuple(col)[:3] + (255,))
+    layer.putalpha(mask if alpha >= 1 else mask.point(lambda p: int(p * alpha)))
+    return _over(img, layer)
+
+
+def _drop(img, mask, off=(5, 8), blur=8, opacity=0.32, col=(0, 0, 0)):
+    return _paint(img, ImageChops.offset(mask, off[0], off[1]).filter(ImageFilter.GaussianBlur(blur)), col, opacity)
+
+
+def _brush(mask, seed, rough=1.0, shear=0.16, cy=S / 2):
+    """Clean glyph mask -> dry-brush look: italic lean, ragged edges, bristle scratches (ink is only ever removed)."""
+    rnd = random.Random(seed)
+    if shear:
+        mask = mask.transform((S, S), Image.AFFINE, (1, shear, -shear * cy, 0, 1, 0), resample=Image.BICUBIC)
+    box = mask.getbbox()
+    if not box:
+        return mask
+    m = mask.filter(ImageFilter.GaussianBlur(1.3 * rough))
+    m = ImageChops.add(m, Image.effect_noise((S, S), 44 * rough), 1.0, -128)          # m + noise - 128
+    m = m.point(lambda p: 255 if p > 150 else (0 if p < 104 else int((p - 104) * 255 / 46)))
+    m = m.filter(ImageFilter.GaussianBlur(0.8))
+    m = ImageChops.multiply(m, mask.filter(ImageFilter.MaxFilter(7)))                  # ragged edge only near the glyph: no stray specks
+    streak = Image.new("L", (S, S), 255)
+    d = ImageDraw.Draw(streak)
+    x0, y0, x1, y1 = box
+    for _ in range(int((x1 - x0) * (y1 - y0) / 700 * rough)):
+        y, x, ln = rnd.randint(y0, y1), rnd.randint(x0 - 30, x1), rnd.randint(24, 130)
+        d.line([(x, y), (x + ln, y + rnd.randint(-2, 2))], fill=rnd.randint(40, 170), width=rnd.choice((1, 1, 2)))
+    return ImageChops.multiply(m, streak)
+
+
+def _time_masks(hm, size, cx, cy, gap=0.30):
+    """-> (hours_mask, colon_mask, minutes_mask, total_width): brush digits with a hand-drawn two-dot colon."""
+    hh, mm = hm.split(":")
+    f = _font("Poppins-Bold.ttf", size)
+    wh, wm = f.getlength(hh), f.getlength(mm)
+    g, wc = size * gap, size * 0.17
+    x = cx - (wh + wm + wc + 2 * g) / 2
+    hmask, mmask, cmask = (Image.new("L", (S, S), 0) for _ in range(3))
+    ImageDraw.Draw(hmask).text((x, cy), hh, font=f, fill=255, anchor="lm")
+    xc = x + wh + g + wc / 2
+    dc, r = ImageDraw.Draw(cmask), size * 0.062
+    for dy in (-0.17, 0.17):
+        dc.ellipse((xc - r, cy + dy * size - r, xc + r, cy + dy * size + r), fill=255)
+    ImageDraw.Draw(mmask).text((x + wh + 2 * g + wc, cy), mm, font=f, fill=255, anchor="lm")
+    return hmask, cmask, mmask, wh + wm + wc + 2 * g
+
+
+def _poster_digits(seed, hm, size, cx, cy, gap=0.30, shear=0.16, rough=1.0):
+    h, c, m, w = _time_masks(hm, size, cx, cy, gap)
+    return (_brush(h, seed, rough, shear, cy), _brush(c, seed + 1, rough * 0.6, shear, cy),
+            _brush(m, seed + 2, rough, shear, cy), w)
+
+
+def _poster1(img, c, hm, date, now):
+    """پوستر ۱ — روشن: paper fade at the bottom, hours in the accent colour, minutes in black."""
+    paper = (240, 233, 220)
+    fade = Image.new("RGBA", (S, S), paper + (255,))
+    fade.putalpha(_alpha_ramp(S * 0.55, S * 0.93, 0, 240, 0.8))
+    img = _over(img, fade)
+    hmk, cmk, mmk, _w = _poster_digits(11, hm, 134, S / 2, S * 0.792, 0.34)
+    img = _drop(img, ImageChops.lighter(ImageChops.lighter(hmk, cmk), mmk), (5, 8), 8, 0.30)
+    img = _paint(img, hmk, shade(c, 0.2))
+    img = _paint(img, cmk, (66, 64, 66))
+    img = _paint(img, mmk, (22, 22, 26))
+    return _track(img, _dtxt(date), (S / 2, S * 0.926), _font("Poppins-Medium.ttf", 24), (86, 82, 78, 255), 3.4)
+
+
+def _poster2(img, c, hm, date, now):
+    """پوستر ۲ — قاب حلقه‌ای: photo inside a circle with a glowing accent ring on a dark stage."""
+    stage = _vgrad2((17, 17, 21), (5, 5, 8))
+    cx, cy, R = S / 2, S * 0.402, S * 0.282
+    d2 = int(R * 2)
+    ph = ImageOps.fit(img.convert("RGB"), (d2, d2), Image.LANCZOS)
+    z = int(d2 / 1.16)                                                  # profile photos: fill the circle a bit more
+    ph = ph.crop(((d2 - z) // 2, (d2 - z) // 2, (d2 - z) // 2 + z, (d2 - z) // 2 + z)).resize((d2, d2), Image.LANCZOS)
+    cm = Image.new("L", (d2 * 4, d2 * 4), 0)
+    ImageDraw.Draw(cm).ellipse((0, 0, d2 * 4 - 1, d2 * 4 - 1), fill=255)
+    stage.paste(ph, (int(cx - R), int(cy - R)), cm.resize((d2, d2), Image.LANCZOS))
+    ss = _SS()
+    ss.d.ellipse(ss.xy(cx - R - 7, cy - R - 7, cx + R + 7, cy + R + 7), outline=shade(c, 0.12) + (255,), width=9 * 2)
+    ss.d.ellipse(ss.xy(cx - R - 30, cy - R - 30, cx + R + 30, cy + R + 30), outline=(205, 205, 212, 125), width=2 * 2)
+    rings = ss.done()
+    img = _glow_from_mask(stage, rings.split()[3].point(lambda p: 255 if p > 200 else 0), c, 9, 0.55, 1)
+    img = _over(img, rings)
+    hmk, cmk, mmk, _w = _poster_digits(21, hm, 112, S / 2, S * 0.842, 0.34, 0.14, 0.9)
+    img = _paint(img, hmk, (246, 242, 236))
+    img = _paint(img, cmk, (226, 222, 216))
+    img = _glow_from_mask(img, mmk, c, 11, 1.1, 1)
+    img = _paint(img, mmk, tint(c, 0.10))
+    return _track(img, _dtxt(date), (S / 2, S * 0.935), _font("Poppins-Medium.ttf", 22), (176, 172, 170, 255), 3.4)
+
+
+def _hand_poly(cx, cy, ang, length, w_base, w_tip, tail):
+    a = math.radians(ang - 90)
+    ux, uy, px, py = math.cos(a), math.sin(a), -math.sin(a), math.cos(a)
+    return [(cx - ux * tail + px * w_base / 2, cy - uy * tail + py * w_base / 2),
+            (cx + ux * length + px * w_tip / 2, cy + uy * length + py * w_tip / 2),
+            (cx + ux * length - px * w_tip / 2, cy + uy * length - py * w_tip / 2),
+            (cx - ux * tail - px * w_base / 2, cy - uy * tail - py * w_base / 2)]
+
+
+def _poster3(img, c, hm, date, now):
+    """پوستر ۳ — عقربه‌ای: minute ticks around the photo (hour ticks in the accent colour) + a real analog clock."""
+    dark = _luma(img) < 118
+    tick = (238, 238, 242) if dark else (28, 28, 32)
+    cx = cy = S / 2
+    R = S * 0.488
+    ss = _SS()
+    for i in range(60):
+        major = i % 5 == 0
+        a, b = _polar(cx, cy, R, i * 6), _polar(cx, cy, R - (34 if major else 17), i * 6)
+        ss.d.line(ss.xy(*a, *b), fill=(shade(c, 0.12) + (255,)) if major else (tick + (175,)), width=(7 if major else 3) * 2)
+    ticks = ss.done()
+    halo = Image.new("RGBA", (S, S), ((0, 0, 0) if dark else (255, 255, 255)) + (255,))
+    halo.putalpha(ticks.split()[3].filter(ImageFilter.GaussianBlur(4)).point(lambda p: int(p * 0.55)))
+    img = _over(_over(img, halo), ticks)
+    ha, ma = (now.hour % 12 + now.minute / 60) * 30, now.minute * 6
+    hands = _SS()
+    for ang, ln, wb, wt, tl, col in ((ha, S * 0.235, 21, 10, 30, shade(c, 0.05) + (255,)),
+                                     (ma, S * 0.37, 13, 4, 46, (250, 248, 244, 255))):
+        hands.d.polygon([(x * 2, y * 2) for x, y in _hand_poly(cx, cy, ang, ln, wb, wt, tl)], fill=col)
+    hands.d.ellipse(hands.xy(cx - 15, cy - 15, cx + 15, cy + 15), fill=(250, 248, 244, 255))
+    hands.d.ellipse(hands.xy(cx - 8, cy - 8, cx + 8, cy + 8), fill=shade(c, 0.1) + (255,))
+    hl = hands.done()
+    sh = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+    sh.putalpha(ImageChops.offset(hl.split()[3], 4, 7).filter(ImageFilter.GaussianBlur(6)).point(lambda p: int(p * 0.55)))
+    return _over(_over(img, sh), hl)
+
+
+def _poster4(img, c, hm, date, now):
+    """پوستر ۴ — قرصی: a frosted-glass pill with the time, hours dark, minutes in the accent colour."""
+    box = (int(S * 0.215), int(S * 0.722), int(S * 0.785), int(S * 0.896))
+    r = (box[3] - box[1]) // 2 - 8
+    pill = _round_mask(box, r)
+    img = _drop(img, pill, (0, 14), 16, 0.30)
+    glass = Image.blend(img.convert("RGB").filter(ImageFilter.GaussianBlur(15)), Image.new("RGB", (S, S), (255, 255, 255)), 0.45)
+    top = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(top).rectangle((0, 0, S, (box[1] + box[3]) // 2), fill=44)           # lighter upper half = glass sheen
+    glass = Image.composite(Image.new("RGB", (S, S), (255, 255, 255)), glass, ImageChops.multiply(top, pill))
+    img = Image.composite(glass.convert("RGBA"), img, pill)
+    inner = _round_mask((box[0] + 3, box[1] + 3, box[2] - 3, box[3] - 3), max(1, r - 3))
+    img = _paint(img, ImageChops.subtract(pill, inner), (255, 255, 255), 0.7)
+    cy = box[1] + (box[3] - box[1]) * 0.40
+    hmk, cmk, mmk, _w = _poster_digits(41, hm, 92, S / 2, cy, 0.32, 0.12, 0.55)
+    img = _paint(_paint(_paint(img, hmk, (22, 22, 26)), cmk, (60, 60, 64)), mmk, shade(c, 0.12))
+    return _track(img, _dtxt(date), (S / 2, box[3] - (box[3] - box[1]) * 0.19), _font("Poppins-Medium.ttf", 19), (96, 94, 98, 255), 2.6)
+
+
+def _poster5(img, c, hm, date, now):
+    """پوستر ۵ — نئونی: dark cinematic fade, big glowing digits (hours white, minutes in the accent colour)."""
+    lum = _luma(img)
+    img = _dim(img, 0.18 + 0.30 * min(1.0, max(0.0, (lum - 70) / 130)), vignette=False)
+    rad = Image.radial_gradient("L").resize((S, S), Image.BICUBIC).point(lambda p: int(235 * (min(255, p * 1.15) / 255) ** 1.7))
+    vig = Image.new("RGBA", (S, S), (2, 2, 5, 255))
+    vig.putalpha(rad)
+    img = _over(img, vig)
+    fade = Image.new("RGBA", (S, S), (3, 3, 6, 255))
+    fade.putalpha(_alpha_ramp(S * 0.42, S * 0.98, 0, 238, 1.25))
+    img = _over(img, fade)
+    hmk, cmk, mmk, _w = _poster_digits(51, hm, 156, S / 2, S * 0.800, 0.32, 0.15, 1.0)
+    img = _glow_from_mask(img, ImageChops.lighter(hmk, cmk), (255, 255, 255), 16, 0.55, 1)
+    img = _glow_from_mask(img, mmk, c, 17, 1.25, 1)
+    img = _paint(_paint(img, hmk, (252, 247, 240)), cmk, (246, 240, 232))
+    img = _paint(img, mmk, tint(c, 0.10))
+    return _track(img, _dtxt(date), (S / 2, S * 0.915), _font("Poppins-Medium.ttf", 23), (196, 190, 186, 255), 4.2)
+
+
+STYLES += [("poster1", "🖼 پوستر ۱ روشن"), ("poster2", "🖼 پوستر ۲ حلقه‌ای"), ("poster3", "🖼 پوستر ۳ عقربه‌ای"),
+           ("poster4", "🖼 پوستر ۴ قرصی"), ("poster5", "🖼 پوستر ۵ نئونی")]
+_DRAW.update({"poster1": _poster1, "poster2": _poster2, "poster3": _poster3, "poster4": _poster4, "poster5": _poster5})
 
 
 def style_key(v):

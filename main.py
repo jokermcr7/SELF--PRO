@@ -7,6 +7,8 @@ import os
 import re
 import time
 
+from types import SimpleNamespace
+
 from telethon import Button, TelegramClient, errors, events, functions, types
 from telethon.sessions import StringSession
 
@@ -17,6 +19,7 @@ import catalog
 import clockpic
 import db
 import forcejoin
+import tickets
 import groupgames
 import secure
 import selfbot
@@ -105,11 +108,17 @@ async def menu_markup(uid):
             [B("خرید الماس", "m:buy", G), B("حساب کاربری", "m:acc", G)],
             [B("کد هدیه", "m:code", R)],
             [B("زیر مجموعه", "m:ref", R),
-             botapi.url_btn("پشتیبانی", f"https://t.me/{SUPPORT}", R) if SUPPORT else B("پشتیبانی", "m:sup", R)]]
+             botapi.url_btn("پشتیبانی", f"https://t.me/{SUPPORT}", R) if SUPPORT else B("پشتیبانی", "m:sup", R)],
+            [B("🎫 تیکت پشتیبانی", "tk:my", R)]]
     if uid in ADMINS:                                   # owner-only tools
         rows.insert(3, [B("🎟 ساخت کد هدیه", "a:gift", G), B("👥 تمامی کاربران", "a:users:0", G)])
         rows.insert(4, [B("🔒 عضویت اجباری", "a:fj", G), B("🏷 کد تخفیف", "a:dsc", G)])
         rows.insert(5, [B("💾 بکاپ دیتابیس", "a:bk", G)])
+        try:
+            n_open = await db.tickets_open_total()
+        except Exception:
+            n_open = 0
+        rows.insert(6, [B(f"🎫 تیکت‌ها ({n_open})" if n_open else "🎫 تیکت‌ها", "tka:l:0", G)])
     last = []
     if CHANNEL:
         last.append(botapi.url_btn("چنل ما", f"https://t.me/{CHANNEL}", R))
@@ -798,7 +807,7 @@ async def clock_view(uid, path, mk, back_path):
 
 
 async def clockpic_view(uid, path, mk, back_path):
-    """🖼 clock drawn on the profile photo: on/off, 9 colors, 24 designs, interval, preview."""
+    """🖼 clock drawn on the profile photo: on/off, 9 colors, 29 designs, interval, preview."""
     c = selfbot.clients.get(uid)
     if not c:
         return None
@@ -1027,6 +1036,8 @@ async def on_pending(e):
             pending.pop(uid, None)       # /start cancels; other commands leave the state alone
         return
     kind = pending[uid]
+    if kind[0] in tickets.PENDING:
+        return await tk_handle(e, uid, kind, t)
     if kind[0] == "dcode":
         fails = dc_fail.get(uid)
         if fails and time.time() - fails[1] < 600 and fails[0] >= 8:
@@ -1848,6 +1859,10 @@ async def billing_loop():
                 await bill_tick(uid, now)
             except Exception:
                 log.exception("billing tick %s", uid)
+
+
+tk_handle = tickets.register(bot, SimpleNamespace(
+    B=B, G=G, R=R, ADMINS=ADMINS, pending=pending, edit_view=edit_view, send_menu=send_menu))[0]
 
 
 async def main():

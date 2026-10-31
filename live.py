@@ -29,27 +29,12 @@ LIVE_MAX = int(os.environ.get("LIVE_MAX", "5") or 5)          # how many lives m
 
 # name -> (display name, YouTube search query, words that must appear in the channel name)
 PRESETS = {
-    "اینترنشنال": ("📡 ایران اینترنشنال", "Iran International live", ("iran international", "iranintl", "ایران اینترنشنال"),
-                   ("iran international", "iranintl", "iran intl")),
-    "بی_بی_سی": ("📡 بی‌بی‌سی فارسی", "BBC Persian live", ("bbc",), ("bbc persian", "bbc farsi", "bbc news persian", "bbc news farsi")),
-    "من_و_تو": ("📡 من و تو", "Manoto live", ("manoto", "من و تو"), ("manoto",)),
-    "صدای_آمریکا": ("📡 صدای آمریکا (VOA فارسی)", "VOA Persian live", ("voa", "voice of america", "صدای آمریکا"),
-                    ("voa persian", "voa farsi", "voa dari", "irinn")),
-    "یورونیوز": ("📡 یورونیوز فارسی", "Euronews Persian live", ("euronews",), ("euronews persian", "euronews farsi")),
+    "اینترنشنال": ("📡 ایران اینترنشنال", "Iran International live", ("iran international", "iranintl", "ایران اینترنشنال")),
+    "بی_بی_سی": ("📡 بی‌بی‌سی فارسی", "BBC Persian live", ("bbc",)),
+    "من_و_تو": ("📡 من و تو", "Manoto live", ("manoto", "من و تو")),
+    "صدای_آمریکا": ("📡 صدای آمریکا (VOA فارسی)", "VOA Persian live", ("voa", "voice of america", "صدای آمریکا")),
+    "یورونیوز": ("📡 یورونیوز فارسی", "Euronews Persian live", ("euronews",)),
 }
-# known direct streams (tried first; dead ones are skipped automatically). Add your own with LIVE_EXTRA="preset=url,..."
-STATIC = {"اینترنشنال": [("Iran International", "https://dev-live.livetvstream.co.uk/LS-63503-4/index.m3u8")]}
-for _kv in (os.environ.get("LIVE_EXTRA") or "").split(","):
-    if "=" in _kv:
-        _k, _u = _kv.split("=", 1)
-        STATIC.setdefault(_k.strip(), []).append((_k.strip(), _u.strip()))
-VLC_UA = {"User-Agent": "VLC/3.0.20 LibVLC/3.0.20"}
-_PL_ERRS: list = []
-
-# IPTV playlists searched first: direct HLS links do not go through YouTube (which blocks datacenter IPs).
-# Override with LIVE_PLAYLISTS="url1,url2" (M3U lists).
-PLAYLISTS = [u.strip() for u in (os.environ.get("LIVE_PLAYLISTS") or
-             "https://iptv-org.github.io/iptv/countries/ir.m3u,https://iptv-org.github.io/iptv/languages/fas.m3u,https://iptv-org.github.io/iptv/categories/news.m3u").split(",") if u.strip()]
 ALIAS = {"ایران_اینترنشنال": "اینترنشنال", "iranintl": "اینترنشنال", "iran_international": "اینترنشنال", "ایران_اینترنشنال_تی_وی": "اینترنشنال",
          "bbc": "بی_بی_سی", "بی‌بی‌سی": "بی_بی_سی", "بیبیسی": "بی_بی_سی", "bbc_persian": "بی_بی_سی",
          "manoto": "من_و_تو", "منوتو": "من_و_تو", "من_وتو": "من_و_تو",
@@ -88,8 +73,6 @@ def pick_preset(word):
 
 
 def is_direct(url):
-    if re.search(r"\.m3u(\?|$)", url, re.I):
-        return False                                             # playlist of channels, handled in resolve_source
     return bool(re.match(r"^(rtmps?|rtsp|udp|srt)://", url, re.I) or re.search(r"\.(m3u8|mpd|ts|mp4|flv)(\?|$)", url, re.I))
 
 
@@ -127,9 +110,6 @@ def _ydl(opts=None):
 
 # YouTube clients that return HLS manifests for live streams without needing JS challenges, tried in order
 _CLIENTS = (["web_safari"], ["tv"], ["android_vr"], ["mweb"], ["ios"], None)
-
-
-_PAGE_CACHE: dict = {}          # preset -> (time, page url)   (skips the slow search on the next start)
 
 
 def _find_live_url(query, words):
@@ -254,116 +234,26 @@ def _extract(page):
     raise RuntimeError(" | ".join(uniq[:3])[:300] or "هیچ فرمت قابل پخشی پیدا نشد")
 
 
-_PL_CACHE: dict = {}            # playlist url -> (time, [(name, url)])
-
-
-def _playlist(url):
-    hit = _PL_CACHE.get(url)
-    if hit and time.time() - hit[0] < 3600:
-        return hit[1]
-    import urllib.request
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=20) as r:
-        txt = r.read(12_000_000).decode("utf-8", "ignore")
-    items, name = [], ""
-    for ln in txt.splitlines():
-        ln = ln.strip()
-        if ln.startswith("#EXTINF"):
-            name = ln.rsplit(",", 1)[-1].strip()
-        elif ln and not ln.startswith("#") and re.match(r"^(https?|rtmps?)://", ln, re.I):
-            items.append((name, ln))
-            name = ""
-    _PL_CACHE[url] = (time.time(), items)
-    return items
-
-
-def _is_youtube(u):
-    return bool(re.search(r"(youtube\.com|youtu\.be)", u, re.I))
-
-
-def _from_playlists(words):
-    """Candidate links for a channel from the IPTV playlists: direct streams first, YouTube links last."""
-    out = []
-    for pl in PLAYLISTS:
-        try:
-            for name, u in _playlist(pl):
-                if any(w in name.lower() for w in words) and u not in [x[1] for x in out]:
-                    out.append((name, u))
-        except Exception as ex:                                  # noqa: BLE001
-            log.warning("live playlist %s failed: %s", pl[:50], str(ex)[:100])
-            _PL_ERRS.append(f"{pl.rsplit('/', 1)[-1]}: {type(ex).__name__}")
-    out.sort(key=lambda x: _is_youtube(x[1]))
-    return out
-
-
-def _first_working(cands, limit=8):
-    """Probe direct candidates in parallel; return the first (in list order) that really serves data."""
-    from concurrent.futures import ThreadPoolExecutor
-    direct = [(n, u) for n, u in cands if not _is_youtube(u)][:limit]
-    if not direct:
-        return None
-
-    def ok(item):
-        try:
-            _probe(item[1], VLC_UA)
-            return True
-        except Exception:                                        # noqa: BLE001
-            return False
-    with ThreadPoolExecutor(max_workers=min(8, len(direct))) as ex:
-        res = list(ex.map(ok, direct))
-    for item, good in zip(direct, res):
-        if good:
-            return item
-    return None
-
-
 def resolve_source(src):
     """-> (media url or [video, audio], headers dict, title). `src` is a preset key or a link."""
     title = ""
-    notes = []
     if src in PRESETS:
-        name, query, words, plwords = PRESETS[src]
-        _PL_ERRS.clear()
-        cands = list(STATIC.get(src, [])) + _from_playlists(plwords)
-        cands.sort(key=lambda x: _is_youtube(x[1]))
-        good = _first_working(cands)
-        if good:
-            return good[1], dict(VLC_UA), name
-        if _PL_ERRS:
-            notes.append("پلی‌لیست: " + "، ".join(_PL_ERRS[:3]))
-        yt_from_pl = next((u for _n, u in cands if _is_youtube(u)), None)
-        if cands:
-            notes.append(f"{len(cands)} لینک پلی‌لیست مرده بود")
-        hit = _PAGE_CACHE.get(src)
-        page = hit[1] if hit and time.time() - hit[0] < 1800 else None
+        name, query, words = PRESETS[src]
+        page = _find_live_url(query, words)
         if not page:
-            page = yt_from_pl or _find_live_url(query, words)
-            if not page:
-                raise RuntimeError("الان لایو زنده‌ای از این شبکه پیدا نشد" + (f" ({'، '.join(notes)})" if notes else ""))
-            _PAGE_CACHE[src] = (time.time(), page)
+            raise RuntimeError("الان لایو زنده‌ای از این شبکه پیدا نشد")
         title = name
     else:
         page = src
-        if re.search(r"\.m3u(\?|$)", page, re.I):               # an M3U playlist link: first working channel in it
-            items = _playlist(page)
-            good = _first_working(items, 12)
-            if good:
-                return good[1], dict(VLC_UA), (good[0] or "")[:60]
-            page = next((u for _n, u in items if _is_youtube(u)), None)
-            if not page:
-                raise RuntimeError("هیچ لینک کارکننده‌ای توی این پلی‌لیست نبود")
-        elif is_direct(page):
+        if is_direct(page):
             return page, {}, src[:60]
-    try:
-        media, hdr, t = _extract(page)
-    except Exception as ex:
-        _PAGE_CACHE.pop(src, None)
-        raise RuntimeError(str(ex) + (f" | {'، '.join(notes)}" if notes else "")) from ex
+    media, hdr, t = _extract(page)
     return media, hdr, title or t[:60]
 
 
 # ------------------------------------------------------------------ ffmpeg
 def build_cmd(ff, media, headers, rtmp, quality, force_encode=False):
-    cmd = [ff, "-hide_banner", "-nostdin", "-loglevel", "warning", "-nostats", "-progress", "pipe:1", "-stats_period", "1"]
+    cmd = [ff, "-hide_banner", "-nostdin", "-loglevel", "warning", "-nostats", "-progress", "pipe:1", "-stats_period", "2"]
     medias = media if isinstance(media, (list, tuple)) else [media]
     for m in medias:
         if re.match(r"^https?://", m, re.I):
@@ -371,9 +261,7 @@ def build_cmd(ff, media, headers, rtmp, quality, force_encode=False):
             if hdr:
                 cmd += ["-headers", hdr]
             cmd += ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
-        hls = bool(re.search(r"m3u8|manifest", m, re.I))
-        cmd += (["-fflags", "+nobuffer+genpts", "-analyzeduration", "1500000", "-probesize", "1500000", "-live_start_index", "-2"] if hls else
-                [] if re.match(r"^rtmps?://", m, re.I) else ["-re"]) + ["-i", m]
+        cmd += ([] if re.search(r"m3u8|manifest|^rtmps?://", m, re.I) else ["-re"]) + ["-i", m]
     cmd += ["-map", "0:v:0?", "-map", "1:a:0?" if len(medias) > 1 else "0:a:0?"]
     q = QUALITY.get(quality) if quality else None
     if q or force_encode:
@@ -395,8 +283,7 @@ async def _supervisor(c, uid, st):
     try:
         while not st["stop"]:
             try:
-                pre = st.pop("pre", None)                                # already resolved by .لایو شروع -> no second lookup
-                media, headers, title = pre or await asyncio.to_thread(resolve_source, st["src"])
+                media, headers, title = await asyncio.to_thread(resolve_source, st["src"])
                 st["title"] = title or st["title"]
             except Exception as ex:                                  # noqa: BLE001
                 fails += 1
@@ -574,8 +461,6 @@ async def c_live(c, e, uid, arg):
         src = pick_preset(rest) or (rest if rest.startswith(("http", "rtmp", "rtsp", "udp", "srt")) else None)
         if not src:
             return await e.edit("شبکه یا لینک معتبر بده؛ `.لایو` رو بزن تا لیست رو ببینی")
-        if re.search(r"rtmp\.t\.me|/s/\d+:", src):
-            return await e.edit("⚠️ این آدرس مقصد لایوئه نه منبع؛ شبکه یا لینک ویدیو بده")
         st["src"] = src
         await _restart_ff(st)
         return await e.edit(f"🔁 منبع عوض شد: **{PRESETS[src][0] if src in PRESETS else src[:50]}**")
@@ -613,51 +498,37 @@ async def _start(c, e, uid, rest):
     ent = await e.get_chat()
     if isinstance(ent, types.Chat):
         return await e.edit("⚠️ این یه گروه معمولیه؛ لایو RTMP فقط برای ابرگروه و کانال کار می‌کنه (گروه رو به ابرگروه تبدیل کن)")
-    if re.search(r"rtmp\.t\.me|/s/\d+:", src):
-        return await e.edit("⚠️ این آدرس، **مقصد** لایوئه (جایی که تلگرام تصویر رو می‌گیره) نه منبع.\n"
-                            "منبع باید شبکه یا لینک ویدیو باشه: `.لایو شروع` (اینترنشنال) | `.لایو شروع بی_بی_سی` | `.لایو شروع https://.../index.m3u8`")
     await e.edit("🔎 در حال پیدا کردن منبع و ساخت لایو...")
+    try:                                                          # fail early when the source is not available
+        media, _h, title = await asyncio.to_thread(resolve_source, src)
+    except Exception as ex:                                      # noqa: BLE001
+        m = str(ex)
+        hint = ("\n(یوتیوب IP سرور رو به‌عنوان ربات می‌شناسه؛ متغیر YT_COOKIES یا LIVE_PROXY رو تنظیم کن یا لینک مستقیم m3u8 بده)"
+                if re.search(r"sign in|not a bot|429|403", m, re.I) else "")
+        return await e.edit(f"⚠️ منبع در دسترس نیست: {m[:320]}{hint}")
     peer = await e.get_input_chat()
     chat_title = getattr(ent, "title", None) or str(e.chat_id)
-
-    async def make_call():
-        r = await c(functions.phone.CreateGroupCallRequest(peer=peer, random_id=random.getrandbits(31), rtmp_stream=True,
-                                                           title=("📡 " + (PRESETS[src][0].replace("📡 ", "") if src in PRESETS else "Live"))[:60]))
-        call_ = _call_of(r)
-        return call_, await _rtmp(c, peer)
-
-    # source lookup and Telegram live creation run at the same time (about half the start-up time)
-    r_src, r_call = await asyncio.gather(asyncio.to_thread(resolve_source, src), make_call(), return_exceptions=True)
-    if isinstance(r_src, Exception):
-        if not isinstance(r_call, Exception):
-            try:
-                await c(functions.phone.DiscardGroupCallRequest(call=r_call[0]))
-            except Exception:                                    # noqa: BLE001
-                pass
-        m = str(r_src)
-        hint = ("\n(یوتیوب IP سرور رو به‌عنوان ربات می‌شناسه؛ متغیر YT_COOKIES یا LIVE_PROXY رو تنظیم کن یا لینک مستقیم m3u8 بده)"
-                if re.search(r"sign in|not a bot|429|403|بلاک", m, re.I) else "")
-        return await e.edit(f"⚠️ منبع در دسترس نیست: {m[:320]}{hint}")
-    if isinstance(r_call, Exception):
-        ex = r_call
-        if isinstance(ex, errors.ChatAdminRequiredError):
-            return await e.edit("⛔ برای ساخت لایو باید ادمین با دسترسی «مدیریت چت‌های ویدیویی» باشی")
+    try:
+        res = await c(functions.phone.CreateGroupCallRequest(peer=peer, random_id=random.getrandbits(31), rtmp_stream=True,
+                                                             title=f"{title or 'Live'}"[:60]))
+        call = _call_of(res)
+        full, url, key = await _rtmp(c, peer)
+    except errors.ChatAdminRequiredError:
+        return await e.edit("⛔ برای ساخت لایو باید ادمین با دسترسی «مدیریت چت‌های ویدیویی» باشی")
+    except errors.RPCError as ex:
         msg = type(ex).__name__
         if "GROUPCALL" in msg.upper() or "ALREADY" in msg.upper():
             return await e.edit("⚠️ یه چت صوتی/ویدیویی یا لایو دیگه توی این چت روشنه؛ اول تمومش کن")
         return await e.edit(f"⚠️ ساخت لایو ناموفق بود ({msg})")
-    media_pre = r_src
-    title = r_src[2]
-    call, (full, url, key) = r_call
     st = {"chat_id": e.chat_id, "chat_title": chat_title, "call": call, "peer": peer, "src": src, "rtmp": full, "url": url, "key": key,
           "quality": await db.uget(uid, "live_q", "") or "", "started": time.time(), "stop": False, "title": title, "error": "", "proc": None,
-          "log": collections.deque(maxlen=8), "prog": {}, "pre": media_pre}
+          "log": collections.deque(maxlen=8), "prog": {}}
     _lives[uid] = st
     st["task"] = asyncio.create_task(_supervisor(c, uid, st))
-    asyncio.create_task(c.send_message("me", f"🔑 **RTMP لایوی {chat_title}** (فقط برای OBS؛ داخل `.لایو شروع` نذار)\n`{url}`\nکلید: `{key}`"))
+    await c.send_message("me", f"🔑 **RTMP لایوی {chat_title}** (برای OBS)\n`{url}`\nکلید: `{key}`")
     sent = False
-    for _ in range(50):                                           # up to ~25 s: wait until bytes really flow to Telegram
-        await asyncio.sleep(0.5)
+    for _ in range(20):                                           # up to ~20 s: wait until bytes really flow to Telegram
+        await asyncio.sleep(1)
         p = st.get("proc")
         if p is not None and p.returncode is None and _sent_bytes(st) > 30000:
             sent = True

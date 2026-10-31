@@ -105,6 +105,15 @@ async def init():
             used INT NOT NULL DEFAULT 0, created TIMESTAMPTZ DEFAULT now());
         CREATE TABLE IF NOT EXISTS discount_uses(
             code TEXT, user_id BIGINT, PRIMARY KEY(code, user_id));
+        CREATE TABLE IF NOT EXISTS tickets(
+            id SERIAL PRIMARY KEY, user_id BIGINT NOT NULL, subject TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open', created TIMESTAMPTZ DEFAULT now(), updated TIMESTAMPTZ DEFAULT now());
+        CREATE TABLE IF NOT EXISTS ticket_msgs(
+            id SERIAL PRIMARY KEY, ticket_id INT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+            from_admin BOOLEAN NOT NULL, body TEXT NOT NULL, media BOOLEAN NOT NULL DEFAULT FALSE,
+            created TIMESTAMPTZ DEFAULT now());
+        CREATE INDEX IF NOT EXISTS ticket_msgs_t ON ticket_msgs(ticket_id);
+        CREATE INDEX IF NOT EXISTS tickets_user ON tickets(user_id);
         """
     )
 
@@ -596,3 +605,59 @@ async def claim_event(key: str) -> bool:
         return bool(ok)
     except Exception:
         return True
+
+
+# ---------------- support tickets ----------------
+TICKET_MAX_OPEN = 3
+
+
+async def ticket_create(uid, subject, body, media=False) -> int:
+    async with pool.acquire() as c:
+        async with c.transaction():
+            tid = await c.fetchval("INSERT INTO tickets(user_id,subject) VALUES($1,$2) RETURNING id", uid, subject[:60])
+            await c.execute("INSERT INTO ticket_msgs(ticket_id,from_admin,body,media) VALUES($1,FALSE,$2,$3)", tid, body, media)
+    return tid
+
+
+async def ticket_get(tid):
+    return await pool.fetchrow("SELECT * FROM tickets WHERE id=$1", tid)
+
+
+async def ticket_open_count(uid) -> int:
+    return await pool.fetchval("SELECT count(*) FROM tickets WHERE user_id=$1 AND status='open'", uid) or 0
+
+
+async def ticket_add_msg(tid, from_admin, body, media=False) -> bool:
+    """False when the ticket is closed/missing (closed tickets accept no more messages)."""
+    async with pool.acquire() as c:
+        async with c.transaction():
+            ok = await c.fetchval("UPDATE tickets SET updated=now() WHERE id=$1 AND status='open' RETURNING 1", tid)
+            if not ok:
+                return False
+            await c.execute("INSERT INTO ticket_msgs(ticket_id,from_admin,body,media) VALUES($1,$2,$3,$4)",
+                            tid, from_admin, body, media)
+    return True
+
+
+async def ticket_set_status(tid, status):
+    return await pool.fetchval("UPDATE tickets SET status=$2, updated=now() WHERE id=$1 RETURNING user_id", tid, status)
+
+
+async def ticket_msgs(tid, n=6):
+    rows = await pool.fetch("SELECT from_admin,body,media,created FROM ticket_msgs WHERE ticket_id=$1 "
+                            "ORDER BY id DESC LIMIT $2", tid, n)
+    return list(reversed(rows))
+
+
+async def tickets_of_user(uid, n=8):
+    return await pool.fetch("SELECT id,subject,status,updated FROM tickets WHERE user_id=$1 ORDER BY id DESC LIMIT $2", uid, n)
+
+
+async def tickets_open(offset=0, n=8):
+    rows = await pool.fetch("SELECT id,user_id,subject,updated FROM tickets WHERE status='open' "
+                            "ORDER BY updated DESC OFFSET $1 LIMIT $2", offset, n + 1)
+    return rows[:n], len(rows) > n
+
+
+async def tickets_open_total() -> int:
+    return await pool.fetchval("SELECT count(*) FROM tickets WHERE status='open'") or 0
