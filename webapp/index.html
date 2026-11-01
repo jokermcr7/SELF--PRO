@@ -6,50 +6,50 @@
 <title>پنل سلف</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-:root{--bg:#0b0c0e;--card:#16181c;--card2:#1d2025;--line:#262a30;--tx:#f3f5f7;--mut:#8b929b;--acc:#c6f432;--acc-tx:#10130a;--red:#ff5d5d;--ok:#3ddc84}
+:root{--bg:#070709;--card:#121216;--card2:#1b1b21;--line:#2a2a31;--tx:#ffffff;--mut:#9d9da8;--acc:#ff1f3d;--acc2:#ff5a6e;--acc-tx:#ffffff;--red:#ff6b78;--ok:#ffffff;--glow:0 0 22px #ff1f3d66}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--tx);font-family:Vazirmatn,Tahoma,system-ui,-apple-system,sans-serif;font-size:15px}
-body{padding:0 14px calc(86px + env(safe-area-inset-bottom));min-height:100vh}
+body{background:radial-gradient(520px 260px at 50% -70px,#4a0713 0%,transparent 70%),var(--bg);padding:0 14px calc(86px + env(safe-area-inset-bottom));min-height:100vh}
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 input,textarea{font:inherit;color:var(--tx);background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 12px;width:100%;outline:none}
 input:focus,textarea:focus{border-color:var(--acc)}
 .num{font-feature-settings:"tnum";direction:ltr;unicode-bidi:isolate}
 header{display:flex;align-items:center;gap:12px;padding:16px 2px 6px}
-.av{width:44px;height:44px;border-radius:50%;background:var(--acc);color:var(--acc-tx);display:grid;place-items:center;font-weight:800;font-size:19px}
+.av{width:44px;height:44px;border-radius:50%;background:linear-gradient(145deg,#ff3b55,#b30019);color:#fff;display:grid;place-items:center;font-weight:800;font-size:19px;box-shadow:var(--glow)}
 .hn{font-weight:700;font-size:17px}.hu{color:var(--mut);font-size:13px}
 .ver{margin-inline-start:auto;color:var(--mut);font-size:11px}
-.hero{background:linear-gradient(160deg,#1c2208,#16181c 60%);border:1px solid #2c3410;border-radius:22px;padding:18px;margin:10px 0}
+.hero{background:linear-gradient(155deg,#4a0713 0%,#16090c 55%,#0c0c0f);border:1px solid #6a1020;border-radius:22px;padding:18px;margin:10px 0;box-shadow:0 10px 34px #ff1f3d1f;position:relative;overflow:hidden}.hero::after{content:'';position:absolute;inset-inline-end:-40px;top:-40px;width:140px;height:140px;border-radius:50%;background:radial-gradient(#ff1f3d55,transparent 70%)}
 .hero small{color:var(--mut)}
-.big{font-size:40px;font-weight:800;color:var(--acc);line-height:1.1;margin:4px 0}
+.big{font-size:40px;font-weight:800;color:#fff;text-shadow:0 0 24px #ff1f3d99;line-height:1.1;margin:4px 0}
 .big span{font-size:18px;color:var(--tx);font-weight:600;margin-inline-start:6px}
 .sub{color:var(--mut);font-size:13px}
 .quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
 .q{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12.5px;color:var(--tx)}
-.q i{width:56px;height:56px;border-radius:50%;background:var(--acc);color:var(--acc-tx);display:grid;place-items:center;font-style:normal;font-size:24px}
+.q i{width:56px;height:56px;border-radius:50%;background:linear-gradient(145deg,#ff3b55,#c4001c);color:#fff;display:grid;place-items:center;font-style:normal;font-size:24px;box-shadow:var(--glow)}
 .q.off i{background:var(--card2);color:var(--tx);border:1px solid var(--line)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;margin:10px 0}
 .row{display:flex;align-items:center;gap:12px}
 .row .grow{flex:1;min-width:0}
 .ttl{font-weight:700}.dsc{color:var(--mut);font-size:12.5px;margin-top:3px;line-height:1.7}
 .pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;background:var(--card2);color:var(--mut)}
-.pill.on{background:#233305;color:var(--acc)}.pill.bad{background:#3a1717;color:var(--red)}
-.btn{background:var(--acc);color:var(--acc-tx);font-weight:700;border-radius:14px;padding:12px 16px;text-align:center;display:block;width:100%}
+.pill.on{background:#3a0a12;color:#ff8a97}.pill.bad{background:#2a2a31;color:#fff}
+.btn{background:linear-gradient(145deg,#ff2f4b,#d4001f);color:#fff;box-shadow:0 6px 20px #ff1f3d3a;font-weight:700;border-radius:14px;padding:12px 16px;text-align:center;display:block;width:100%}
 .btn.sec{background:var(--card2);color:var(--tx);border:1px solid var(--line)}
 .btn.sm{padding:8px 14px;width:auto;display:inline-block;border-radius:11px;font-size:13px}
-.btn.red{background:#3a1717;color:var(--red)}
+.btn.red{background:#26262d;color:#fff;box-shadow:none;border:1px solid var(--line)}
 .btn:disabled{opacity:.5}
 .sw{width:50px;height:30px;border-radius:99px;background:#33373e;position:relative;flex:none;transition:.2s}
 .sw::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.2s}
-.sw.on{background:var(--acc)}.sw.on::after{inset-inline-start:23px;background:var(--acc-tx)}
+.sw.on{background:var(--acc)}.sw.on::after{inset-inline-start:23px;background:#fff}
 .sec-t{font-weight:800;font-size:16px;margin:20px 2px 6px}
-nav{position:fixed;inset-inline:0;bottom:0;display:flex;background:rgba(16,17,20,.96);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom));z-index:9}
-nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--mut);padding:6px 0;border-radius:12px}
+nav{position:fixed;inset-inline:0;bottom:0;display:flex;background:rgba(9,9,11,.96);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom));z-index:9}
+nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;color:var(--mut);padding:6px 0;border-radius:12px}
 nav button b{font-size:21px;font-weight:400;filter:grayscale(1) opacity(.7)}
-nav button.on{color:var(--acc)}nav button.on b{filter:none}
+nav button.on{color:#fff}nav button.on b::after{content:'';display:block;width:18px;height:3px;border-radius:3px;background:var(--acc);margin:2px auto 0;box-shadow:var(--glow)}nav button.on b{filter:none}
 .search{margin:12px 0 4px}
 .chips{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
 .chip{flex:none;padding:8px 13px;border-radius:99px;background:var(--card);border:1px solid var(--line);font-size:13px;color:var(--mut);white-space:nowrap}
-.chip.on{background:var(--acc);color:var(--acc-tx);border-color:var(--acc);font-weight:700}
+.chip.on{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:700;box-shadow:var(--glow)}
 .feat{padding:12px 14px}
 .feat .more{display:none;margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
 .feat.open .more{display:block}
@@ -57,19 +57,42 @@ code,.code{background:var(--card2);border-radius:8px;padding:3px 8px;font-family
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .grid.c2{grid-template-columns:repeat(2,1fr)}.grid.c4{grid-template-columns:repeat(4,1fr)}
 .opt{background:var(--card2);border:1px solid var(--line);border-radius:13px;padding:11px 6px;text-align:center;font-size:13px}
-.opt.on{border-color:var(--acc);color:var(--acc);background:#1b2308;font-weight:700}
+.opt.on{border-color:var(--acc);color:#fff;background:#2e0a12;font-weight:700;box-shadow:inset 0 0 0 1px #ff1f3d55}
 .dot{width:26px;height:26px;border-radius:50%;margin:0 auto 4px;border:2px solid #0006}
 .tx{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
 .tx:last-child{border:0}
-.pos{color:var(--ok)}.neg{color:var(--red)}
+.pos{color:#fff}.neg{color:var(--red)}
 .pv{width:100%;border-radius:16px;margin-top:10px;display:block}
-#toast{position:fixed;top:12px;inset-inline:14px;z-index:99;background:#e9ecef;color:#111;border-radius:14px;padding:12px 14px;text-align:center;font-weight:600;transform:translateY(-120px);transition:.25s}
-#toast.show{transform:none}#toast.err{background:var(--red);color:#fff}
+#toast{position:fixed;top:12px;inset-inline:14px;z-index:99;background:#fff;color:#111;border-radius:14px;padding:12px 14px;text-align:center;font-weight:600;transform:translateY(-120px);transition:.25s}
+#toast.show{transform:none}#toast.err{background:var(--acc);color:#fff}
 .load{text-align:center;color:var(--mut);padding:50px 0}
 .back{color:var(--acc);padding:12px 2px;font-weight:700}
 .fonts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .fonts .opt{font-size:15px;direction:ltr}
 .mono{white-space:pre-wrap;font-size:13.5px;line-height:1.9}
+
+/* games */
+.gcard{display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center;background:linear-gradient(160deg,#1d0a10,#121216);border:1px solid #3a1019;border-radius:18px;padding:16px 8px;transition:.15s}
+.gcard:active{transform:scale(.97);border-color:var(--acc)}.gcard i{font-style:normal;font-size:38px;filter:drop-shadow(0 4px 14px #ff1f3d77)}.gcard b{font-size:15px}.gcard small{color:var(--mut);font-size:11.5px;line-height:1.6}
+.stage{min-height:190px;border-radius:22px;background:radial-gradient(circle at 50% 0%,#3a0a14,#0d0d11 70%);border:1px solid #4a1019;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:18px;margin:10px 0;text-align:center;overflow:hidden}
+.face{font-size:96px;line-height:1;filter:drop-shadow(0 8px 20px #ff1f3d88)}.face.roll{animation:shake .12s infinite}
+@keyframes shake{0%{transform:rotate(-12deg) translateY(0)}50%{transform:rotate(10deg) translateY(-8px)}100%{transform:rotate(-12deg) translateY(0)}}
+.coin{width:120px;height:120px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#d5d5dc 60%,#8d8d98);display:grid;place-items:center;font-size:54px;box-shadow:0 10px 30px #ff1f3d55,inset 0 -6px 12px #0003}
+.coin.flip{animation:flip 1.2s ease-in-out}@keyframes flip{0%{transform:rotateY(0) translateY(0)}50%{transform:rotateY(900deg) translateY(-50px)}100%{transform:rotateY(1800deg) translateY(0)}}
+.wheel{width:150px;height:150px;border-radius:50%;background:conic-gradient(#e11 0 10deg,#111 10deg 20deg,#e11 20deg 30deg,#111 30deg 40deg,#e11 40deg 50deg,#111 50deg 60deg,#e11 60deg 70deg,#111 70deg 80deg,#e11 80deg 90deg,#111 90deg 100deg,#e11 100deg 110deg,#111 110deg 120deg,#e11 120deg 130deg,#111 130deg 140deg,#e11 140deg 150deg,#111 150deg 160deg,#e11 160deg 170deg,#111 170deg 180deg,#e11 180deg 190deg,#111 190deg 200deg,#e11 200deg 210deg,#111 210deg 220deg,#e11 220deg 230deg,#111 230deg 240deg,#e11 240deg 250deg,#111 250deg 260deg,#e11 260deg 270deg,#111 270deg 280deg,#e11 280deg 290deg,#111 290deg 300deg,#e11 300deg 310deg,#111 310deg 320deg,#e11 320deg 330deg,#111 330deg 340deg,#e11 340deg 350deg,#111 350deg 360deg);border:6px solid #fff;display:grid;place-items:center;box-shadow:var(--glow);position:relative}
+.wheel.spin{animation:spin .6s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.wheel span{width:64px;height:64px;border-radius:50%;background:#070709;border:3px solid #fff;display:grid;place-items:center;font-size:26px;font-weight:800}
+.wheel span.r{background:#c4001c}.wheel span.b{background:#000}
+.reels{display:flex;gap:8px;direction:ltr}.reel{width:64px;height:72px;border-radius:14px;background:#fff;color:#111;display:grid;place-items:center;font-size:30px;font-weight:800;box-shadow:inset 0 -6px 10px #0002}
+.reel.spin{animation:blink .12s infinite}@keyframes blink{50%{background:#ffd9de}}
+.who{font-size:12.5px;color:var(--mut);margin-top:4px}
+.vs{display:flex;align-items:center;gap:18px;direction:ltr}.vs b{font-size:46px;min-width:90px}.vs span{color:var(--acc);font-weight:800;font-size:20px}
+.res{border-radius:16px;padding:14px;text-align:center;font-weight:800;font-size:18px;margin:8px 0;animation:pop .35s}
+.res.win{background:linear-gradient(145deg,#ff2f4b,#b30019);color:#fff;box-shadow:var(--glow)}.res.lose{background:var(--card2);color:#fff;border:1px solid var(--line)}.res.tie{background:#fff;color:#111}
+@keyframes pop{0%{transform:scale(.8);opacity:0}100%{transform:none;opacity:1}}
+.betrow{display:flex;gap:8px;flex-wrap:wrap}.betrow .opt{flex:1;min-width:58px}
+.bal{display:inline-flex;gap:6px;align-items:center;background:#2e0a12;border:1px solid #5a101c;border-radius:99px;padding:5px 12px;font-size:13px;font-weight:700}
+.cdn{margin:2px 0 6px}.num9{display:grid;grid-template-columns:repeat(9,1fr);gap:5px;direction:ltr}.num9 .opt{padding:10px 0}
 </style>
 </head>
 <body>
@@ -79,7 +102,7 @@ code,.code{background:var(--card2);border-radius:8px;padding:3px 8px;font-family
 
 <script>
 const tg = window.Telegram && Telegram.WebApp;
-if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('#0b0c0e'); tg.setBackgroundColor('#0b0c0e'); } catch (e) {} }
+if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('#070709'); tg.setBackgroundColor('#070709'); } catch (e) {} }
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fa = n => Number(n).toLocaleString('fa-IR');
@@ -98,7 +121,7 @@ function openLink(u) { if (!u) return; if (tg && /t\.me/.test(u)) tg.openTelegra
 const copy = async t => { try { await navigator.clipboard.writeText(t); toast('کپی شد'); } catch (e) { toast(t); } };
 const sw = on => `<div class="sw ${on ? 'on' : ''}"></div>`;
 
-const TABS = [['home', '🏠', 'خانه'], ['feat', '🧩', 'قابلیت‌ها'], ['clock', '⏰', 'ساعت'], ['wallet', '💎', 'کیف پول'], ['more', '☰', 'بیشتر']];
+const TABS = [['home', '🏠', 'خانه'], ['games', '🎮', 'بازی‌ها'], ['feat', '🧩', 'قابلیت‌ها'], ['clock', '⏰', 'ساعت'], ['wallet', '💎', 'کیف پول'], ['more', '☰', 'بیشتر']];
 function nav() { $('#nav').innerHTML = TABS.map(t => `<button class="${TAB === t[0] ? 'on' : ''}" onclick="go('${t[0]}')"><b>${t[1]}</b>${t[2]}</button>`).join(''); }
 function go(t, sub) { TAB = t; SUB = sub || null; FEAT = null; window.scrollTo(0, 0); render(); }
 function back() { if (SUB) { SUB = null; render(); } }
@@ -137,9 +160,65 @@ const VIEWS = {
     ${noSelf()}
     <div class="card"><div class="row"><div class="grow"><div class="ttl">📡 وضعیت سلف</div><div class="dsc">مصرف ${S.rate} الماس در ساعت</div></div><span class="pill ${st[1]}">${st[0]}</span></div></div>
     <div class="sec-t">میانبرها</div>
+    <div class="card" onclick="go('games')" style="border-color:#5a101c;background:linear-gradient(150deg,#2a0a10,#121216)"><div class="row"><div class="grow"><div class="ttl">🎮 بازی‌ها (مستقیم داخل مینی‌اپ)</div><div class="dsc">تاس، سکه، رولت، کازینو، بازی ۲۰ و چالش — با ربات، منصفانه با random.org</div></div>›</div></div>
     <div class="card" onclick="go('clock')"><div class="row"><div class="grow"><div class="ttl">⏰ ساعت زنده و عکس پروفایل</div><div class="dsc">اسم، فامیل، بیو و ساعت روی عکس با ۲۹ طرح</div></div>›</div></div>
     <div class="card" onclick="go('feat')"><div class="row"><div class="grow"><div class="ttl">🧩 همه‌ی قابلیت‌های پنل</div><div class="dsc">روشن/خاموش، تنظیم و راهنمای هر دستور</div></div>›</div></div>
     <div class="card" onclick="go('wallet')"><div class="row"><div class="grow"><div class="ttl">👥 زیرمجموعه‌گیری</div><div class="dsc">${fa(S.invited)} نفر تا الان • هر نفر ${fa(S.ref_bonus)} الماس</div></div>›</div></div>`;
+  },
+
+
+  async games() {
+    GM = await api('games');
+    const L = [['dice', '🎲', 'تاس', 'زوج/فرد ×۲ • حدس دقیق ×۶'], ['coin', '🪙', 'شیر یا خط', 'برد ×۲'], ['roulette', '🎡', 'رولت', 'رنگ ×۲ • عدد ×۳۶'],
+      ['casino', '🎰', 'کازینو', 'اسلات تو و ربات • ×۲'], ['duel', '⚔️', 'بازی ۲۰', 'قرعه‌ی عدد با ربات'], ['chal', '🙈', 'چالش عدد مخفی', 'عدد مخفی ۱ تا ۹']];
+    return `<div class="hero"><small>🍀 همه‌ی بازی‌ها شانسیه</small><div class="ttl" style="font-size:18px;margin:6px 0">شانس برد تو و ربات دقیقاً برابره</div>
+      <div class="sub">قرعه‌ی همه‌ی بازی‌ها از random.org • حداقل ورودی ${fa(GM.min_bet)} الماس</div></div>
+    <div class="sec-t">🤖 بازی با ربات (همین‌جا)</div>
+    <div class="grid c2">${L.map(g => `<button class="gcard" onclick="openGame('${g[0]}')"><i>${g[1]}</i><b>${g[2]}</b><small>${g[3]}</small></button>`).join('')}</div>
+    <div class="sec-t">👥 بازی با کاربران (داخل گپ)</div>
+    <div class="card"><div class="dsc" style="margin:0 0 10px">بازی بین کاربرها توی گپ مخصوص بازی انجام میشه؛ مثل رولت، چالش عدد مخفی، کازینو دونفره، سکه و بازی ۲۰ (دو/سه‌نفره).
+      برنده کل جایزه رو منهای ${fa(GM.fee)}٪ مالیات می‌گیره.</div>
+      <div><span class="code">بازی ها</span> <span class="code">رولت 50</span> <span class="code">چالش 50</span> <span class="code">کازینو 50</span> <span class="code">سکه 50</span> <span class="code">بازی 20</span></div>
+      ${GM.game_link ? `<br><button class="btn" onclick="openLink(GM.game_link)">👥 ورود به گپ بازی</button>` : '<div class="dsc">مدیر هنوز لینک گپ بازی رو تنظیم نکرده.</div>'}</div>`;
+  },
+
+  async game() {
+    const g = GK, T = {dice: '🎲 تاس', coin: '🪙 شیر یا خط', roulette: '🎡 رولت', casino: '🎰 کازینو', duel: '⚔️ بازی ۲۰', chal: '🙈 چالش عدد مخفی'}[g];
+    const o = GO[g], M = GM.mult;
+    let opts = '', rule = '', stage = '<div class="face">🎲</div>';
+    if (g === 'dice') {
+      rule = `زوج یا فرد ×${fa(M.dice_parity)} • حدس دقیق ×${fa(M.dice_exact)}`;
+      opts = `<div class="grid c3">${[['even', 'زوج'], ['odd', 'فرد'], ['exact', '🎯 حدس دقیق']].map(x => `<button class="opt ${o.mode === x[0] ? 'on' : ''}" onclick="setO('mode','${x[0]}')">${x[1]}</button>`).join('')}</div>`
+        + (o.mode === 'exact' ? `<div class="grid c4" style="margin-top:8px;grid-template-columns:repeat(6,1fr)">${[1,2,3,4,5,6].map(n => `<button class="opt ${o.pick === n ? 'on' : ''}" onclick="setO('pick',${n})">${n}</button>`).join('')}</div>` : '');
+    } else if (g === 'coin') {
+      rule = 'برد ×۲ • شانس ۵۰٪'; stage = '<div class="coin" id="coin">🪙</div>';
+      opts = `<div class="grid c2">${[['h', '🦁 شیر'], ['t', '✍️ خط']].map(x => `<button class="opt ${o.pick === x[0] ? 'on' : ''}" onclick="setO('pick','${x[0]}')">${x[1]}</button>`).join('')}</div>`;
+    } else if (g === 'roulette') {
+      rule = `رنگ/زوج‌وفرد/بازه ×${fa(M.roulette_side)} • عدد دقیق ×${fa(M.roulette_exact)} (۱ تا ۳۶ بدون صفر)`;
+      stage = '<div class="wheel" id="wheel"><span id="rn">🎡</span></div>';
+      const modes = [['red', '🔴 قرمز'], ['black', '⚫ سیاه'], ['even', 'زوج'], ['odd', 'فرد'], ['low', '۱ تا ۱۸'], ['high', '۱۹ تا ۳۶'], ['exact', '🎯 عدد دقیق']];
+      opts = `<div class="grid">${modes.map(x => `<button class="opt ${o.mode === x[0] ? 'on' : ''}" onclick="setO('mode','${x[0]}')">${x[1]}</button>`).join('')}</div>`
+        + (o.mode === 'exact' ? `<div class="grid" style="margin-top:8px;grid-template-columns:repeat(6,1fr)">${Array.from({length: 36}, (_, i) => i + 1).map(n => `<button class="opt ${o.pick === n ? 'on' : ''}" style="padding:9px 0" onclick="setO('pick',${n})">${n}</button>`).join('')}</div>` : '');
+    } else if (g === 'casino') {
+      rule = `اول تو و ربات می‌چرخونین؛ نتیجه‌ی بهتر برنده‌ست ×${fa(M.casino)} (۷۷۷ > سه‌تا مثل هم > دوتا مثل هم > هیچی > BAR BAR BAR)`;
+      stage = `<div class="who">تو</div><div class="reels" id="r_me">${[0, 1, 2].map(() => '<div class="reel">7️⃣</div>').join('')}</div><div class="who">ربات 🤖</div><div class="reels" id="r_bot">${[0, 1, 2].map(() => '<div class="reel">7️⃣</div>').join('')}</div><div class="who" id="rl"></div>`;
+    } else if (g === 'duel') {
+      rule = `قرعه‌ی عدد بین تو و ربات؛ عدد بزرگ‌تر برنده‌ست • مالیات ${fa(GM.fee)}٪ از جایزه`; stage = '<div class="vs"><b id="d_me">؟</b><span>VS</span><b id="d_bot">؟</b></div><div class="who">تو &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ربات 🤖</div>';
+    } else {
+      rule = `هر دو یه عدد مخفی ۱ تا ${fa(GM.ch_n)} انتخاب می‌کنین؛ random.org عدد هدف رو می‌ده و نزدیک‌تر برنده‌ست (روی دایره؛ شانس هر دو برابره) • مالیات ${fa(GM.fee)}٪`;
+      stage = '<div class="vs"><b id="c_me">؟</b><span>🎯</span><b id="c_bot">؟</b></div><div class="who" id="c_t">عدد هدف: ؟</div>';
+      opts = `<div class="num9">${Array.from({length: GM.ch_n}, (_, i) => i + 1).map(n => `<button class="opt ${o.pick === n ? 'on' : ''}" onclick="setO('pick',${n})">${n}</button>`).join('')}</div>`;
+    }
+    const bets = [20, 50, 100, 500, 1000];
+    return `<button class="back" onclick="back()">‹ بازگشت</button>
+      <div class="row"><div class="sec-t grow" style="margin:6px 2px">${T}</div><span class="bal num" id="balc">💎 ${esc(GM.balance_text)}</span></div>
+      <div class="dsc cdn">${rule}</div>
+      <div class="stage" id="stage">${stage}</div><div id="res"></div>
+      ${opts ? `<div class="card">${opts}</div>` : ''}
+      <div class="card"><div class="ttl" style="margin-bottom:8px">💎 مبلغ ورودی</div>
+        <div class="betrow">${bets.map(b => `<button class="opt ${GB === b ? 'on' : ''}" onclick="setBet(${b})">${fa(b)}</button>`).join('')}</div>
+        <input id="betin" type="number" inputmode="numeric" placeholder="مبلغ دلخواه" value="${bets.includes(GB) ? '' : GB}" oninput="GB=Math.max(0,+this.value||0)" style="margin-top:8px;direction:ltr"></div>
+      <button class="btn" id="playbtn" onclick="play()" style="font-size:17px;padding:15px">${{dice: '🎲 بنداز', coin: '🪙 بنداز', roulette: '🎡 بچرخون', casino: '🎰 بچرخون', duel: '⚔️ شروع', chal: '🙈 قفل کن و شروع'}[g]}</button>`;
   },
 
   async feat() {
@@ -259,6 +338,49 @@ function featCard(i) {
       ${i.usage.map(u => `<div><span class="code">${esc(u)}</span></div>`).join('')}
       <div class="row" style="margin-top:10px;flex-wrap:wrap">${act.join('')}<button class="btn sm sec" onclick="event.stopPropagation();copy('.${i.cmd}')">کپی دستور</button></div>
       <div id="o_${esc(i.cmd)}"></div></div></div>`;
+}
+
+
+// ---------- games
+let GM = null, GK = 'dice', GB = 50, busy = false;
+const GO = {dice: {mode: 'even', pick: 1}, coin: {pick: 'h'}, roulette: {mode: 'red', pick: 7}, casino: {}, duel: {}, chal: {pick: 5}};
+const SYMS = ['BAR', '🍇', '🍋', '7️⃣'], FACES = '⚀⚁⚂⚃⚄⚅';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function openGame(g) { GK = g; go('games', 'game'); }
+function setO(k, v) { GO[GK][k] = v; tick(); render(); }
+function setBet(b) { GB = b; tick(); render(); }
+function resBox(r, extra) {
+  const net = r.net, w = r.win;
+  const cls = w === true ? 'win' : w === false ? 'lose' : 'tie';
+  const txt = w === true ? `🏆 بردی! +${fa(net)} 💎` : w === false ? `💥 باختی −${fa(r.bet)} 💎` : '🤝 مساوی؛ ورودیت برگشت';
+  $('#res').innerHTML = `<div class="res ${cls}">${txt}${extra ? `<div class="sub" style="font-weight:500;margin-top:4px;color:inherit;opacity:.85">${extra}</div>` : ''}</div>`;
+  if (tg && tg.HapticFeedback) try { tg.HapticFeedback.notificationOccurred(w === true ? 'success' : w === false ? 'error' : 'warning'); } catch (e) {}
+}
+const ANIM = {
+  async dice(r) { const f = $('#stage .face'); f.classList.add('roll'); for (let i = 0; i < 12; i++) { f.textContent = FACES[Math.floor(Math.random() * 6)]; await sleep(90); } f.classList.remove('roll'); f.textContent = FACES[r.v - 1];
+    resBox(r, `آمد: ${r.v} (${r.v % 2 ? 'فرد' : 'زوج'})`); },
+  async coin(r) { const c = $('#coin'); c.textContent = '🪙'; c.classList.remove('flip'); void c.offsetWidth; c.classList.add('flip'); await sleep(1200); c.textContent = r.res === 'h' ? '🦁' : '✍️';
+    resBox(r, `آمد: ${r.res === 'h' ? 'شیر' : 'خط'}`); },
+  async roulette(r) { const w = $('#wheel'), n = $('#rn'); w.classList.add('spin'); n.className = ''; for (let i = 0; i < 14; i++) { n.textContent = 1 + Math.floor(Math.random() * 36); await sleep(95); }
+    w.classList.remove('spin'); n.textContent = r.v; n.className = r.red ? 'r' : 'b'; resBox(r, `آمد: ${r.v} ${r.red ? '🔴' : '⚫'} ${r.v % 2 ? 'فرد' : 'زوج'}`); },
+  async casino(r) {
+    for (let k = 0; k < r.rounds.length; k++) { const R = r.rounds[k], me = [...$('#r_me').children], bt = [...$('#r_bot').children];
+      [...me, ...bt].forEach(x => x.classList.add('spin')); $('#rl').textContent = k ? `مساوی شد؛ دور ${fa(k + 1)} …` : '';
+      for (let i = 0; i < 10; i++) { [...me, ...bt].forEach(x => x.textContent = SYMS[Math.floor(Math.random() * 4)]); await sleep(90); }
+      for (let i = 0; i < 3; i++) { me[i].classList.remove('spin'); me[i].textContent = R.me[i]; await sleep(220); }
+      for (let i = 0; i < 3; i++) { bt[i].classList.remove('spin'); bt[i].textContent = R.bot[i]; await sleep(220); }
+      $('#rl').textContent = `تو: ${R.me_label}  |  ربات: ${R.bot_label}`; await sleep(500); }
+    resBox(r); },
+  async duel(r) { const a = $('#d_me'), b = $('#d_bot'); for (let i = 0; i < 14; i++) { a.textContent = 1 + Math.floor(Math.random() * 999); b.textContent = 1 + Math.floor(Math.random() * 999); await sleep(80); }
+    a.textContent = r.me; b.textContent = r.bot; resBox(r, `مالیات ${fa(r.tax)} 💎 از جایزه کم شد`); },
+  async chal(r) { const a = $('#c_me'), b = $('#c_bot'), t = $('#c_t'); a.textContent = '🔒'; b.textContent = '🔒'; t.textContent = 'قرعه‌ی عدد هدف از random.org …'; await sleep(1300);
+    a.textContent = r.pick; b.textContent = r.bot; await sleep(700); t.textContent = '🎯 عدد هدف: ' + r.target; resBox(r, r.how === 'coin' ? 'مساوی شد؛ برنده با قرعه‌ی سکه مشخص شد 🪙' : 'نزدیک‌تر به عدد هدف برنده‌ست'); },
+};
+async function play() {
+  if (busy) return; busy = true; const btn = $('#playbtn'); btn.disabled = true; $('#res').innerHTML = '';
+  try { const r = await api('game_play', {game: GK, bet: GB, ...GO[GK]}); await ANIM[GK](r); GM.balance_text = r.balance_text; S.balance = r.balance; S.balance_text = r.balance_text;
+    const b = $('#balc'); if (b) b.textContent = '💎 ' + r.balance_text; }
+  catch (e) {} finally { busy = false; btn.disabled = false; }
 }
 
 // ---------- actions
