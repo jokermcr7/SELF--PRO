@@ -27,6 +27,7 @@ import botapi
 import catalog
 import clockpic
 import db
+import gameapi
 import selfbot
 import utils
 
@@ -398,12 +399,25 @@ async def a_admin_code(uid, b, user):
     return await a_admin(uid, b, user)
 
 
+async def a_games(uid, b, user):
+    admin = uid in db.ADMINS
+    return {**gameapi.meta(), "balance": 0 if admin else int(await db.balance(uid)), "balance_text": await _bal_text(uid)}
+
+
+async def a_game_play(uid, b, user):
+    name = " ".join(x for x in (user.get("first_name"), user.get("last_name")) if x) or str(uid)
+    try:
+        return await gameapi.play(uid, name, b)
+    except gameapi.GameErr as e:
+        raise Err(e.msg)
+
+
 ROUTES = {
     "state": a_state, "features": a_features, "toggle": a_toggle, "action": a_action, "selfpower": a_selfpower,
     "clock": a_clock, "clock_set": a_clock_set, "cpic": a_cpic, "cpic_set": a_cpic_set, "cpic_preview": a_cpic_preview,
     "style": a_style, "style_set": a_style_set, "afk": a_afk, "afk_set": a_afk_set, "kw": a_kw, "kw_set": a_kw_set,
     "profile_set": a_profile_set, "wallet": a_wallet, "redeem": a_redeem, "buy": a_buy, "menu": a_menu,
-    "admin": a_admin, "admin_code": a_admin_code,
+    "admin": a_admin, "admin_code": a_admin_code, "games": a_games, "game_play": a_game_play,
 }
 
 

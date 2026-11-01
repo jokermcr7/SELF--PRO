@@ -1889,9 +1889,27 @@ async def billing_loop():
                 log.exception("billing tick %s", uid)
 
 
+BOT_ABOUT = ("🤖 سلف چیست؟\n"
+             "سلف یه دستیار هوشمنده که روی خود اکانت تلگرامت نصب میشه و کارهات رو خودکار انجام میده.\n"
+             "ساعت زنده روی اسم و عکس پروفایل، منشی و پاسخ خودکار، ضد حذف و ادیت، ترجمه، دانلود و ده‌ها قابلیت دیگه؛ بدون هیچ دانش فنی.\n"
+             "🎮 توی مینی‌اپ هم بازی کن و ببر! برای شروع «Start» رو بزن 🚀")
+BOT_ABOUT_SHORT = "🤖 سلف = دستیار هوشمند اکانت تلگرامت: ساعت زنده، منشی، ضدحذف، بازی و ده‌ها قابلیت دیگه 🚀"
+
+
+async def set_bot_about():
+    """Text shown on the empty chat before the user presses Start («What can this bot do?»)."""
+    for lang in ("", "fa"):
+        try:
+            await botapi.call("setMyDescription", {"description": BOT_ABOUT, **({"language_code": lang} if lang else {})})
+            await botapi.call("setMyShortDescription", {"short_description": BOT_ABOUT_SHORT, **({"language_code": lang} if lang else {})})
+        except Exception as ex:
+            log.warning("bot description not set: %s", ex)
+
+
 async def main():
     await db.init()
     await bot.start(bot_token=BOT_TOKEN)
+    await set_bot_about()
     groupgames.register(bot, ADMINS)
     await groupgames.recover(bot)
     for r in await db.users_active_list():
