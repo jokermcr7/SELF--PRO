@@ -171,8 +171,8 @@ const VIEWS = {
     GM = await api('games');
     const L = [['dice', '🎲', 'تاس', 'زوج/فرد ×۲ • حدس دقیق ×۶'], ['coin', '🪙', 'شیر یا خط', 'برد ×۲'], ['roulette', '🎡', 'رولت', 'رنگ ×۲ • عدد ×۳۶'],
       ['casino', '🎰', 'کازینو', 'اسلات تو و ربات • ×۲'], ['duel', '⚔️', 'بازی ۲۰', 'قرعه‌ی عدد با ربات'], ['chal', '🙈', 'چالش عدد مخفی', 'عدد مخفی ۱ تا ۹']];
-    return `<div class="hero"><small>🍀 همه‌ی بازی‌ها شانسیه</small><div class="ttl" style="font-size:18px;margin:6px 0">شانس برد تو و ربات دقیقاً برابره</div>
-      <div class="sub">قرعه‌ی همه‌ی بازی‌ها از random.org • حداقل ورودی ${fa(GM.min_bet)} الماس</div></div>
+    return `<div class="hero"><small>🍀 همه‌ی بازی‌ها شانسیه</small><div class="ttl" style="font-size:18px;margin:6px 0">قرعه‌ی واقعی با random.org</div>
+      <div class="sub">قرعه‌ی همه‌ی بازی‌ها از random.org • حداقل ورودی ${fa(GM.min_bet)} الماس • شانس برنده‌شدن هر دور حدود ${fa(GM.win_pct)}٪</div></div>
     <div class="sec-t">🤖 بازی با ربات (همین‌جا)</div>
     <div class="grid c2">${L.map(g => `<button class="gcard" onclick="openGame('${g[0]}')"><i>${g[1]}</i><b>${g[2]}</b><small>${g[3]}</small></button>`).join('')}</div>
     <div class="sec-t">👥 بازی با کاربران (داخل گپ)</div>
@@ -191,7 +191,7 @@ const VIEWS = {
       opts = `<div class="grid c3">${[['even', 'زوج'], ['odd', 'فرد'], ['exact', '🎯 حدس دقیق']].map(x => `<button class="opt ${o.mode === x[0] ? 'on' : ''}" onclick="setO('mode','${x[0]}')">${x[1]}</button>`).join('')}</div>`
         + (o.mode === 'exact' ? `<div class="grid c4" style="margin-top:8px;grid-template-columns:repeat(6,1fr)">${[1,2,3,4,5,6].map(n => `<button class="opt ${o.pick === n ? 'on' : ''}" onclick="setO('pick',${n})">${n}</button>`).join('')}</div>` : '');
     } else if (g === 'coin') {
-      rule = 'برد ×۲ • شانس ۵۰٪'; stage = '<div class="coin" id="coin">🪙</div>';
+      rule = 'برد ×۲ '; stage = '<div class="coin" id="coin">🪙</div>';
       opts = `<div class="grid c2">${[['h', '🦁 شیر'], ['t', '✍️ خط']].map(x => `<button class="opt ${o.pick === x[0] ? 'on' : ''}" onclick="setO('pick','${x[0]}')">${x[1]}</button>`).join('')}</div>`;
     } else if (g === 'roulette') {
       rule = `رنگ/زوج‌وفرد/بازه ×${fa(M.roulette_side)} • عدد دقیق ×${fa(M.roulette_exact)} (۱ تا ۳۶ بدون صفر)`;
@@ -205,7 +205,7 @@ const VIEWS = {
     } else if (g === 'duel') {
       rule = `قرعه‌ی عدد بین تو و ربات؛ عدد بزرگ‌تر برنده‌ست • مالیات ${fa(GM.fee)}٪ از جایزه`; stage = '<div class="vs"><b id="d_me">؟</b><span>VS</span><b id="d_bot">؟</b></div><div class="who">تو &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ربات 🤖</div>';
     } else {
-      rule = `هر دو یه عدد مخفی ۱ تا ${fa(GM.ch_n)} انتخاب می‌کنین؛ random.org عدد هدف رو می‌ده و نزدیک‌تر برنده‌ست (روی دایره؛ شانس هر دو برابره) • مالیات ${fa(GM.fee)}٪`;
+      rule = `هر دو یه عدد مخفی ۱ تا ${fa(GM.ch_n)} انتخاب می‌کنین؛ random.org عدد هدف رو می‌ده و نزدیک‌تر برنده‌ست • مالیات ${fa(GM.fee)}٪`;
       stage = '<div class="vs"><b id="c_me">؟</b><span>🎯</span><b id="c_bot">؟</b></div><div class="who" id="c_t">عدد هدف: ؟</div>';
       opts = `<div class="num9">${Array.from({length: GM.ch_n}, (_, i) => i + 1).map(n => `<button class="opt ${o.pick === n ? 'on' : ''}" onclick="setO('pick',${n})">${n}</button>`).join('')}</div>`;
     }
