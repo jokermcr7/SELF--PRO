@@ -31,6 +31,13 @@ def btn(text: str, data: str, style: str | None = None) -> dict:
     return d
 
 
+def webapp_btn(text: str, url: str, style: str | None = None) -> dict:
+    d = {"text": text, "web_app": {"url": url}}
+    if style:
+        d["style"] = style
+    return d
+
+
 def kb(rows) -> dict:
     return {"inline_keyboard": rows}
 

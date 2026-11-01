@@ -7,8 +7,6 @@ import os
 import re
 import time
 
-from types import SimpleNamespace
-
 from telethon import Button, TelegramClient, errors, events, functions, types
 from telethon.sessions import StringSession
 
@@ -19,11 +17,11 @@ import catalog
 import clockpic
 import db
 import forcejoin
-import tickets
 import groupgames
 import secure
 import selfbot
 import utils
+import webapp
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("main")
@@ -54,6 +52,8 @@ bcast_busy = False
 bot = TelegramClient(StringSession(), API_ID, API_HASH)
 login: dict[int, dict] = {}
 
+VERSION = (open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")).read().strip()
+           if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")) else "")
 G, R = "success", "danger"          # Bot API button styles (green / red)
 
 
@@ -108,17 +108,14 @@ async def menu_markup(uid):
             [B("خرید الماس", "m:buy", G), B("حساب کاربری", "m:acc", G)],
             [B("کد هدیه", "m:code", R)],
             [B("زیر مجموعه", "m:ref", R),
-             botapi.url_btn("پشتیبانی", f"https://t.me/{SUPPORT}", R) if SUPPORT else B("پشتیبانی", "m:sup", R)],
-            [B("🎫 تیکت پشتیبانی", "tk:my", R)]]
+             botapi.url_btn("پشتیبانی", f"https://t.me/{SUPPORT}", R) if SUPPORT else B("پشتیبانی", "m:sup", R)]]
     if uid in ADMINS:                                   # owner-only tools
         rows.insert(3, [B("🎟 ساخت کد هدیه", "a:gift", G), B("👥 تمامی کاربران", "a:users:0", G)])
         rows.insert(4, [B("🔒 عضویت اجباری", "a:fj", G), B("🏷 کد تخفیف", "a:dsc", G)])
         rows.insert(5, [B("💾 بکاپ دیتابیس", "a:bk", G)])
-        try:
-            n_open = await db.tickets_open_total()
-        except Exception:
-            n_open = 0
-        rows.insert(6, [B(f"🎫 تیکت‌ها ({n_open})" if n_open else "🎫 تیکت‌ها", "tka:l:0", G)])
+    wurl = webapp.public_url()
+    if wurl:                                            # Telegram Mini App (full panel with all features)
+        rows.insert(0, [botapi.webapp_btn("🚀 پنل مینی‌اپ (مدیریت همه‌ی قابلیت‌ها)", wurl, G)])
     last = []
     if CHANNEL:
         last.append(botapi.url_btn("چنل ما", f"https://t.me/{CHANNEL}", R))
@@ -807,7 +804,7 @@ async def clock_view(uid, path, mk, back_path):
 
 
 async def clockpic_view(uid, path, mk, back_path):
-    """🖼 clock drawn on the profile photo: on/off, 9 colors, 29 designs, interval, preview."""
+    """🖼 clock drawn on the profile photo: on/off, 9 colors, 24 designs, interval, preview."""
     c = selfbot.clients.get(uid)
     if not c:
         return None
@@ -1036,8 +1033,6 @@ async def on_pending(e):
             pending.pop(uid, None)       # /start cancels; other commands leave the state alone
         return
     kind = pending[uid]
-    if kind[0] in tickets.PENDING:
-        return await tk_handle(e, uid, kind, t)
     if kind[0] == "dcode":
         fails = dc_fail.get(uid)
         if fails and time.time() - fails[1] < 600 and fails[0] >= 8:
@@ -1861,10 +1856,6 @@ async def billing_loop():
                 log.exception("billing tick %s", uid)
 
 
-tk_handle = tickets.register(bot, SimpleNamespace(
-    B=B, G=G, R=R, ADMINS=ADMINS, pending=pending, edit_view=edit_view, send_menu=send_menu))[0]
-
-
 async def main():
     await db.init()
     await bot.start(bot_token=BOT_TOKEN)
@@ -1879,6 +1870,11 @@ async def main():
                 await send_menu(uid, "⚠️ نشست سلفت دیگه معتبر نیست (از تلگرام خارج شدی). دوباره وارد شو.")
         except Exception:
             log.exception("failed to start self for %s", uid)
+    try:
+        await webapp.start({"bot_username": BOT_USERNAME, "support": SUPPORT, "channel": CHANNEL,
+                            "version": VERSION, "start_buy": start_buy, "send_menu": send_menu})
+    except Exception:
+        log.exception("mini app server failed (the bot keeps running)")
     asyncio.create_task(billing_loop())
     asyncio.create_task(fj_loop())
     asyncio.create_task(backup.loop(bot, ADMINS))
