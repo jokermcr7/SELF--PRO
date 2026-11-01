@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>پنل سلف</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:#0b0c0e;--card:#16181c;--card2:#1d2025;--line:#262a30;--tx:#f3f5f7;--mut:#8b929b;--acc:#c6f432;--acc-tx:#10130a;--red:#ff5d5d;--ok:#3ddc84}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:Vazirmatn,Tahoma,system-ui,-apple-system,sans-serif;font-size:15px}
+body{padding:0 14px calc(86px + env(safe-area-inset-bottom));min-height:100vh}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+input,textarea{font:inherit;color:var(--tx);background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 12px;width:100%;outline:none}
+input:focus,textarea:focus{border-color:var(--acc)}
+.num{font-feature-settings:"tnum";direction:ltr;unicode-bidi:isolate}
+header{display:flex;align-items:center;gap:12px;padding:16px 2px 6px}
+.av{width:44px;height:44px;border-radius:50%;background:var(--acc);color:var(--acc-tx);display:grid;place-items:center;font-weight:800;font-size:19px}
+.hn{font-weight:700;font-size:17px}.hu{color:var(--mut);font-size:13px}
+.ver{margin-inline-start:auto;color:var(--mut);font-size:11px}
+.hero{background:linear-gradient(160deg,#1c2208,#16181c 60%);border:1px solid #2c3410;border-radius:22px;padding:18px;margin:10px 0}
+.hero small{color:var(--mut)}
+.big{font-size:40px;font-weight:800;color:var(--acc);line-height:1.1;margin:4px 0}
+.big span{font-size:18px;color:var(--tx);font-weight:600;margin-inline-start:6px}
+.sub{color:var(--mut);font-size:13px}
+.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.q{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12.5px;color:var(--tx)}
+.q i{width:56px;height:56px;border-radius:50%;background:var(--acc);color:var(--acc-tx);display:grid;place-items:center;font-style:normal;font-size:24px}
+.q.off i{background:var(--card2);color:var(--tx);border:1px solid var(--line)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;margin:10px 0}
+.row{display:flex;align-items:center;gap:12px}
+.row .grow{flex:1;min-width:0}
+.ttl{font-weight:700}.dsc{color:var(--mut);font-size:12.5px;margin-top:3px;line-height:1.7}
+.pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;background:var(--card2);color:var(--mut)}
+.pill.on{background:#233305;color:var(--acc)}.pill.bad{background:#3a1717;color:var(--red)}
+.btn{background:var(--acc);color:var(--acc-tx);font-weight:700;border-radius:14px;padding:12px 16px;text-align:center;display:block;width:100%}
+.btn.sec{background:var(--card2);color:var(--tx);border:1px solid var(--line)}
+.btn.sm{padding:8px 14px;width:auto;display:inline-block;border-radius:11px;font-size:13px}
+.btn.red{background:#3a1717;color:var(--red)}
+.btn:disabled{opacity:.5}
+.sw{width:50px;height:30px;border-radius:99px;background:#33373e;position:relative;flex:none;transition:.2s}
+.sw::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.2s}
+.sw.on{background:var(--acc)}.sw.on::after{inset-inline-start:23px;background:var(--acc-tx)}
+.sec-t{font-weight:800;font-size:16px;margin:20px 2px 6px}
+nav{position:fixed;inset-inline:0;bottom:0;display:flex;background:rgba(16,17,20,.96);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom));z-index:9}
+nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--mut);padding:6px 0;border-radius:12px}
+nav button b{font-size:21px;font-weight:400;filter:grayscale(1) opacity(.7)}
+nav button.on{color:var(--acc)}nav button.on b{filter:none}
+.search{margin:12px 0 4px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;padding:8px 13px;border-radius:99px;background:var(--card);border:1px solid var(--line);font-size:13px;color:var(--mut);white-space:nowrap}
+.chip.on{background:var(--acc);color:var(--acc-tx);border-color:var(--acc);font-weight:700}
+.feat{padding:12px 14px}
+.feat .more{display:none;margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
+.feat.open .more{display:block}
+code,.code{background:var(--card2);border-radius:8px;padding:3px 8px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;direction:rtl;unicode-bidi:plaintext;display:inline-block;margin:3px 0}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.grid.c2{grid-template-columns:repeat(2,1fr)}.grid.c4{grid-template-columns:repeat(4,1fr)}
+.opt{background:var(--card2);border:1px solid var(--line);border-radius:13px;padding:11px 6px;text-align:center;font-size:13px}
+.opt.on{border-color:var(--acc);color:var(--acc);background:#1b2308;font-weight:700}
+.dot{width:26px;height:26px;border-radius:50%;margin:0 auto 4px;border:2px solid #0006}
+.tx{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.tx:last-child{border:0}
+.pos{color:var(--ok)}.neg{color:var(--red)}
+.pv{width:100%;border-radius:16px;margin-top:10px;display:block}
+#toast{position:fixed;top:12px;inset-inline:14px;z-index:99;background:#e9ecef;color:#111;border-radius:14px;padding:12px 14px;text-align:center;font-weight:600;transform:translateY(-120px);transition:.25s}
+#toast.show{transform:none}#toast.err{background:var(--red);color:#fff}
+.load{text-align:center;color:var(--mut);padding:50px 0}
+.back{color:var(--acc);padding:12px 2px;font-weight:700}
+.fonts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fonts .opt{font-size:15px;direction:ltr}
+.mono{white-space:pre-wrap;font-size:13.5px;line-height:1.9}
+</style>
+</head>
+<body>
+<div id="toast"></div>
+<div id="app"><div class="load">در حال بارگذاری…</div></div>
+<nav id="nav"></nav>
+
+<script>
+const tg = window.Telegram && Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('#0b0c0e'); tg.setBackgroundColor('#0b0c0e'); } catch (e) {} }
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fa = n => Number(n).toLocaleString('fa-IR');
+let S = null, TAB = 'home', SUB = null, FEAT = null, FOLDER = 0, Q = '';
+
+async function api(name, body) {
+  const r = await fetch('/api/' + name, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Init-Data': tg ? tg.initData : ''}, body: JSON.stringify(body || {})});
+  let j; try { j = await r.json(); } catch (e) { j = {ok: false, error: 'پاسخ نامعتبر'}; }
+  if (!j.ok) { toast(j.error || 'خطا', true); throw new Error(j.error); }
+  return j;
+}
+let tt;
+function toast(m, err) { const t = $('#toast'); t.textContent = m; t.className = 'show' + (err ? ' err' : ''); clearTimeout(tt); tt = setTimeout(() => t.className = '', 2600); if (tg && tg.HapticFeedback) try { tg.HapticFeedback.notificationOccurred(err ? 'error' : 'success'); } catch (e) {} }
+function tick() { if (tg && tg.HapticFeedback) try { tg.HapticFeedback.selectionChanged(); } catch (e) {} }
+function openLink(u) { if (!u) return; if (tg && /t\.me/.test(u)) tg.openTelegramLink(u); else if (tg) tg.openLink(u); else window.open(u); }
+const copy = async t => { try { await navigator.clipboard.writeText(t); toast('کپی شد'); } catch (e) { toast(t); } };
+const sw = on => `<div class="sw ${on ? 'on' : ''}"></div>`;
+
+const TABS = [['home', '🏠', 'خانه'], ['feat', '🧩', 'قابلیت‌ها'], ['clock', '⏰', 'ساعت'], ['wallet', '💎', 'کیف پول'], ['more', '☰', 'بیشتر']];
+function nav() { $('#nav').innerHTML = TABS.map(t => `<button class="${TAB === t[0] ? 'on' : ''}" onclick="go('${t[0]}')"><b>${t[1]}</b>${t[2]}</button>`).join(''); }
+function go(t, sub) { TAB = t; SUB = sub || null; FEAT = null; window.scrollTo(0, 0); render(); }
+function back() { if (SUB) { SUB = null; render(); } }
+if (tg) { tg.BackButton.onClick(() => { SUB ? back() : tg.close(); }); }
+
+async function load() { S = (await api('state')); render(); }
+async function render() {
+  nav();
+  if (tg) { SUB ? tg.BackButton.show() : tg.BackButton.hide(); }
+  const el = $('#app');
+  if (!S) return;
+  try {
+    if (SUB) el.innerHTML = await VIEWS[SUB]();
+    else el.innerHTML = header() + await VIEWS[TAB]();
+  } catch (e) { el.innerHTML = header() + '<div class="load">خطا در بارگذاری؛ دوباره امتحان کن</div>'; }
+  if (SUB && VIEWS['after_' + SUB]) VIEWS['after_' + SUB]();
+}
+function header() {
+  const ini = esc((S.name || '?').trim().charAt(0).toUpperCase());
+  return `<header><div class="av">${ini}</div><div><div class="hn">${esc(S.name)}</div><div class="hu">${S.username ? '@' + esc(S.username) : 'شناسه: ' + S.uid}</div></div><div class="ver">v${esc(S.version)}</div></header>`;
+}
+const noSelf = () => !S.has_self ? `<div class="card"><div class="ttl">هنوز سلف نساختی</div><div class="dsc">برای ساخت سلف باید با شماره‌ات وارد بشی؛ این کار فقط داخل چت ربات انجام میشه.</div><br><button class="btn" onclick="api('menu').then(()=>{toast('منوی ربات فرستاده شد');tg&&setTimeout(()=>tg.close(),700)})">ساخت سلف داخل ربات</button></div>` : '';
+
+const VIEWS = {
+  async home() {
+    const st = !S.has_self ? ['ساخته نشده', ''] : S.running ? (S.selfon ? ['فعال و روشن', 'on'] : ['خاموش (هزینه کسر میشه)', '']) : ['متوقف (الماس کافی نیست)', 'bad'];
+    return `<div class="hero"><small>موجودی شما</small>
+      <div class="big num">${S.admin ? '∞' : fa(S.balance)}<span>الماس</span></div>
+      <div class="sub">${S.admin ? 'مالک — بدون محدودیت' : '≈ ' + fa(S.toman) + ' تومان'} &nbsp;•&nbsp; ⏳ ${esc(S.left)}</div></div>
+    <div class="quick">
+      <button class="q" onclick="buy()"><i>＋</i>شارژ</button>
+      <button class="q ${S.selfon ? '' : 'off'}" onclick="power()"><i>⏻</i>${S.selfon ? 'سلف روشن' : 'سلف خاموش'}</button>
+      <button class="q" onclick="go('feat')"><i>🧩</i>قابلیت‌ها</button>
+      <button class="q" onclick="go('wallet')"><i>👥</i>دعوت</button>
+    </div>
+    ${noSelf()}
+    <div class="card"><div class="row"><div class="grow"><div class="ttl">📡 وضعیت سلف</div><div class="dsc">مصرف ${S.rate} الماس در ساعت</div></div><span class="pill ${st[1]}">${st[0]}</span></div></div>
+    <div class="sec-t">میانبرها</div>
+    <div class="card" onclick="go('clock')"><div class="row"><div class="grow"><div class="ttl">⏰ ساعت زنده و عکس پروفایل</div><div class="dsc">اسم، فامیل، بیو و ساعت روی عکس با ۲۴ طرح</div></div>›</div></div>
+    <div class="card" onclick="go('feat')"><div class="row"><div class="grow"><div class="ttl">🧩 همه‌ی قابلیت‌های پنل</div><div class="dsc">روشن/خاموش، تنظیم و راهنمای هر دستور</div></div>›</div></div>
+    <div class="card" onclick="go('wallet')"><div class="row"><div class="grow"><div class="ttl">👥 زیرمجموعه‌گیری</div><div class="dsc">${fa(S.invited)} نفر تا الان • هر نفر ${fa(S.ref_bonus)} الماس</div></div>›</div></div>`;
+  },
+
+  async feat() {
+    const d = (await api('features')).folders;
+    const q = Q.trim();
+    let body = '';
+    if (q) {
+      const hits = [];
+      d.forEach(f => f.items.forEach(i => { if ((i.title + i.cmd + i.desc).includes(q)) hits.push(i); }));
+      body = hits.map(featCard).join('') || '<div class="load">چیزی پیدا نشد</div>';
+    } else {
+      body = d[FOLDER].items.map(featCard).join('');
+    }
+    return `<input class="search" id="q" placeholder="🔍 جستجوی قابلیت…" value="${esc(Q)}" oninput="Q=this.value;clearTimeout(window._qt);window._qt=setTimeout(()=>{render().then(()=>{const e=$('#q');e.focus();e.setSelectionRange(9999,9999)})},250)">
+      ${q ? '' : `<div class="chips">${d.map((f, i) => `<button class="chip ${i === FOLDER ? 'on' : ''}" onclick="FOLDER=${i};render()">${esc(f.folder)}</button>`).join('')}</div>`}${body}`;
+  },
+
+  async clock() {
+    const c = await api('clock'), p = await api('cpic');
+    const t = {name: 'اسم', last: 'فامیل', bio: 'بیو'};
+    return `<div class="sec-t" style="margin-top:16px">⏰ ساعت زنده روی پروفایل</div>
+    ${noSelf()}
+    <div class="card">${Object.keys(t).map(k => `<div class="row" style="padding:8px 0" onclick="clk('${k}',${!c.flags[k]})"><div class="grow ttl">ساعت در ${t[k]}</div>${sw(c.flags[k])}</div>`).join('')}
+      <div class="dsc">دقیقاً لحظه‌ی عوض شدن دقیقه آپدیت میشه.</div></div>
+    <div class="card"><div class="ttl" style="margin-bottom:10px">🔤 فونت ارقام</div><div class="fonts">
+      ${c.fonts.map((f, i) => `<button class="opt ${String(c.font) === String(i) ? 'on' : ''}" onclick="clkFont('${i}')">${esc(f)}</button>`).join('')}
+      <button class="opt ${c.font === 'rand' ? 'on' : ''}" onclick="clkFont('rand')">🎲 رندوم</button></div></div>
+    <div class="sec-t">🖼 ساعت روی عکس پروفایل</div>
+    <div class="card"><div class="row" onclick="cp({on:${!p.cfg.on}})"><div class="grow"><div class="ttl">روی عکس پروفایل</div><div class="dsc">روی همون عکس فعلی‌ات کشیده میشه؛ با خاموش کردن عکس قبلی برمی‌گرده.</div></div>${sw(p.cfg.on)}</div></div>
+    <div class="card"><div class="ttl" style="margin-bottom:10px">🎨 رنگ</div><div class="grid c4">
+      ${p.colors.map(c2 => `<button class="opt ${p.cfg.color === c2.key ? 'on' : ''}" onclick="cp({color:'${c2.key}'})"><div class="dot" style="background:rgb(${c2.rgb})"></div>${esc(c2.name)}</button>`).join('')}</div></div>
+    <div class="card"><div class="ttl" style="margin-bottom:10px">✨ طرح (${fa(p.styles.length)} طرح)</div><div class="grid">
+      ${p.styles.map(s => `<button class="opt ${p.cfg.style === s.key ? 'on' : ''}" onclick="cp({style:'${s.key}'})">${esc(s.name)}</button>`).join('')}</div></div>
+    <div class="card"><div class="ttl" style="margin-bottom:10px">⏱ هر چند دقیقه عکس عوض بشه</div><div class="grid c4">
+      ${p.every_options.map(n => `<button class="opt ${p.cfg.every === n ? 'on' : ''}" onclick="cp({every:${n}})">${fa(n)} دقیقه</button>`).join('')}</div></div>
+    <button class="btn sec" onclick="preview()">👁 پیش‌نمایش با تنظیمات فعلی</button><div id="pv"></div>`;
+  },
+
+  async wallet() {
+    const w = await api('wallet');
+    return `<div class="hero"><small>موجودی</small><div class="big num">${esc(w.balance)}<span>الماس</span></div><div class="sub">⏳ ${esc(w.left)}</div></div>
+    <button class="btn" onclick="buy()">💳 خرید الماس</button>
+    <div class="card" style="margin-top:12px"><div class="dsc" style="margin:0">${fa(w.pack)} الماس = ۳۰ روز سلف = ${fa(w.pack_toman)} تومان • مصرف ${w.rate} الماس در ساعت</div></div>
+    <div class="sec-t">🎁 کد هدیه</div><div class="card"><div class="row"><input id="code" placeholder="کد هدیه" style="direction:ltr"><button class="btn sm" onclick="redeem()">ثبت</button></div></div>
+    <div class="sec-t">👥 زیرمجموعه</div><div class="card"><div class="dsc" style="margin:0 0 10px">هر نفر که با لینکت وارد بشه ${fa(S.ref_bonus)} الماس می‌گیری • تا الان ${fa(S.invited)} نفر</div>
+      <div class="code" style="word-break:break-all">${esc(S.ref_link)}</div><div class="row" style="margin-top:10px"><button class="btn sm" onclick="copy(S.ref_link)">کپی لینک</button>
+      <button class="btn sm sec" onclick="openLink('https://t.me/share/url?url='+encodeURIComponent(S.ref_link))">ارسال به دوستان</button></div></div>
+    <div class="sec-t">تراکنش‌های اخیر</div><div class="card">${w.history.map(h => `<div class="tx"><span>${esc(h.reason)}</span><b class="num ${h.amount >= 0 ? 'pos' : 'neg'}">${h.amount >= 0 ? '+' : ''}${h.amount.toLocaleString()}</b></div>`).join('') || '<div class="dsc">هنوز تراکنشی نیست</div>'}</div>`;
+  },
+
+  async more() {
+    const a = [['👤', 'حساب کاربری', "go('more','account')"], ['🎨', 'حالت خودکار متن (سبک و فونت)', "go('more','style')"], ['😴', 'متن منشی', "go('more','afk')"],
+      ['💬', 'پاسخ‌های کلمه‌ای', "go('more','kw')"], ['✏️', 'تغییر اسم و بیو', "go('more','profile')"], ['📊', 'وضعیت دقیق سلف', "act('status')"], ['🏆', 'برترین‌ها', "act('top')"]];
+    if (S.admin) a.push(['🛠', 'مدیریت (مالک)', "go('more','admin')"]);
+    const links = [S.support && ['🛟', 'پشتیبانی', `openLink('https://t.me/${S.support}')`], S.channel && ['📣', 'کانال ما', `openLink('https://t.me/${S.channel}')`], ['🤖', 'منوی ربات', "api('menu').then(()=>{toast('منوی ربات فرستاده شد');tg&&setTimeout(()=>tg.close(),700)})"]].filter(Boolean);
+    return '<div class="sec-t">بیشتر</div>' + a.concat(links).map(x => `<div class="card" onclick="${x[2]}"><div class="row"><div style="font-size:22px">${x[0]}</div><div class="grow ttl">${x[1]}</div>›</div></div>`).join('') + '<div id="out"></div>';
+  },
+
+  async account() {
+    return `<button class="back" onclick="back()">‹ بازگشت</button><div class="sec-t">👤 حساب کاربری</div>
+    <div class="card"><div class="tx"><span>نام</span><b>${esc(S.name)}</b></div><div class="tx"><span>آیدی عددی</span><b class="num">${S.uid}</b></div>
+    <div class="tx"><span>یوزرنیم</span><b class="num">${S.username ? '@' + esc(S.username) : '—'}</b></div><div class="tx"><span>سلف</span><b>${S.has_self ? (S.running ? 'فعال' : 'متوقف') : 'ندارد'}</b></div>
+    <div class="tx"><span>زمان باقی‌مانده</span><b>${esc(S.left)}</b></div><div class="tx"><span>زیرمجموعه</span><b>${fa(S.invited)} نفر</b></div></div>
+    <div class="dsc">حذف کامل سلف و خروج از اکانت از داخل ربات (منوی «مدیریت سلف») انجام میشه.</div>`;
+  },
+
+  async style() {
+    const s = await api('style');
+    return `<button class="back" onclick="back()">‹ بازگشت</button><div class="sec-t">🎨 حالت خودکار متن</div>
+    <div class="dsc" style="margin-bottom:10px">هر پیامی که می‌فرستی خودکار با سبک و فونت انتخابی ویرایش میشه. سبک‌ها قابل ترکیبن (مونو با بقیه نه).</div>
+    <div class="card"><div class="grid c2">${s.styles.map(x => `<button class="opt ${s.modes.includes(x.key) ? 'on' : ''}" onclick="stySet({mode:'${x.key}'})">${esc(x.label)}</button>`).join('')}</div></div>
+    <div class="card"><div class="ttl" style="margin-bottom:10px">فونت (فقط حروف انگلیسی)</div><div class="grid">${s.fonts.map(x => `<button class="opt ${s.font === x.key ? 'on' : ''}" onclick="stySet({font:'${x.key}'})" style="direction:ltr">${esc(x.key)}· ${esc(x.sample)}</button>`).join('')}</div></div>
+    <button class="btn red" onclick="stySet({clear:true})">🔴 خاموش کردن همه</button>`;
+  },
+
+  async afk() {
+    const a = await api('afk');
+    return `<button class="back" onclick="back()">‹ بازگشت</button><div class="sec-t">😴 منشی خودکار</div>
+    <div class="card"><div class="row" onclick="tog('منشی')"><div class="grow ttl">روشن/خاموش منشی</div>${sw(a.on)}</div></div>
+    <div class="card"><div class="ttl" style="margin-bottom:8px">متن پاسخ</div><textarea id="afk" rows="4">${esc(a.text)}</textarea><br><br><button class="btn" onclick="afkSave()">ذخیره</button></div>`;
+  },
+
+  async kw() {
+    const k = await api('kw');
+    return `<button class="back" onclick="back()">‹ بازگشت</button><div class="sec-t">💬 پاسخ کلمه‌ای</div>
+    <div class="card"><div class="row" onclick="tog('کلمه')"><div class="grow ttl">روشن/خاموش</div>${sw(k.on)}</div></div>
+    <div class="card"><input id="kw1" placeholder="کلمه (مثلاً سلام)"><br><br><textarea id="kw2" rows="2" placeholder="جواب خودکار"></textarea><br><br><button class="btn" onclick="kwAdd()">➕ افزودن</button></div>
+    ${k.items.map(i => `<div class="card"><div class="row"><div class="grow"><div class="ttl">${esc(i.kw)}</div><div class="dsc">${esc(i.resp)}</div></div><button class="btn sm red" data-k="${esc(i.kw)}" onclick="kwDel(this.dataset.k)">حذف</button></div></div>`).join('') || '<div class="dsc">هنوز کلمه‌ای نداری</div>'}`;
+  },
+
+  async profile() {
+    return `<button class="back" onclick="back()">‹ بازگشت</button><div class="sec-t">✏️ اسم و بیو</div>
+    <div class="card"><div class="ttl" style="margin-bottom:8px">اسم جدید</div><input id="pn" maxlength="64"><br><br><button class="btn" onclick="prof('name')">تغییر اسم</button></div>
+    <div class="card"><div class="ttl" style="margin-bottom:8px">بیو جدید</div><textarea id="pb" rows="3" maxlength="70"></textarea><br><br><button class="btn" onclick="prof('bio')">تغییر بیو</button></div>
+    <div class="dsc">اگه ساعت زنده روی اسم/بیو روشنه، ساعت به انتهای متن جدیدت اضافه میشه.</div>`;
+  },
+
+  async admin() {
+    const a = await api('admin');
+    return `<button class="back" onclick="back()">‹ بازگشت</button><div class="sec-t">🛠 مدیریت</div>
+    <div class="card"><div class="tx"><span>کاربران</span><b class="num">${fa(a.users)}</b></div><div class="tx"><span>سلف‌های فعال</span><b class="num">${fa(a.selfs)}</b></div></div>
+    <div class="sec-t">🎟 ساخت کد هدیه</div>
+    <div class="card"><input id="gc" placeholder="کد (انگلیسی/عدد)" style="direction:ltr"><br><br><div class="row"><input id="ga" type="number" placeholder="مقدار الماس"><input id="gm" type="number" placeholder="تعداد استفاده" value="1"></div><br><button class="btn" onclick="gift()">ساخت</button></div>
+    ${a.codes.map(c => `<div class="card"><div class="row"><div class="grow"><div class="ttl num" style="direction:ltr">${esc(c.code)}</div><div class="dsc">${fa(c.amount)} الماس • ${fa(c.used)}/${fa(c.max)} استفاده</div></div><button class="btn sm red" data-k="${esc(c.code)}" onclick="gdel(this.dataset.k)">حذف</button></div></div>`).join('')}`;
+  },
+};
+
+function featCard(i) {
+  const open = FEAT === i.cmd;
+  const act = [];
+  if (i.panel) act.push(`<button class="btn sm" onclick="event.stopPropagation();openPanel('${i.panel}')">⚙️ تنظیم</button>`);
+  if (i.run) act.push(`<button class="btn sm sec" onclick="event.stopPropagation();act('${i.run}')">▶️ اجرا</button>`);
+  return `<div class="card feat ${open ? 'open' : ''}" onclick="FEAT=${open ? 'null' : `'${i.cmd}'`};render()">
+    <div class="row"><div class="grow"><div class="ttl">${esc(i.title)}</div><div class="dsc" style="display:${open ? 'none' : '-webkit-box'};-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden">${esc(i.desc)}</div></div>
+    ${i.toggle ? `<div onclick="event.stopPropagation();tog('${i.cmd}')">${sw(i.on)}</div>` : '<span style="color:var(--mut)">' + (open ? '⌃' : '⌄') + '</span>'}</div>
+    <div class="more"><div class="dsc" style="margin:0 0 8px">${esc(i.desc)}</div>
+      ${i.usage.map(u => `<div><span class="code">${esc(u)}</span></div>`).join('')}
+      <div class="row" style="margin-top:10px;flex-wrap:wrap">${act.join('')}<button class="btn sm sec" onclick="event.stopPropagation();copy('.${i.cmd}')">کپی دستور</button></div>
+      <div id="o_${esc(i.cmd)}"></div></div></div>`;
+}
+
+// ---------- actions
+async function tog(cmd) {
+  try { const r = await api('toggle', {cmd}); tick(); if (r.note) toast(r.note); render(); } catch (e) {}
+}
+async function power() { try { await api('selfpower', {on: !S.selfon}); S.selfon = !S.selfon; toast(S.selfon ? 'سلف روشن شد' : 'سلف خاموش شد'); render(); } catch (e) {} }
+async function buy() { try { await api('buy'); toast('صفحه‌ی خرید توی ربات باز شد'); tg && setTimeout(() => tg.close(), 700); } catch (e) {} }
+function openPanel(p) { const m = {clock: ['clock'], cpic: ['clock'], style: ['more', 'style'], afk: ['more', 'afk'], kw: ['more', 'kw'], profile: ['more', 'profile']}[p]; go(m[0], m[1]); }
+async function act(key) {
+  try { const r = await api('action', {key}); const o = $('#out') || document.body.appendChild(Object.assign(document.createElement('div'), {id: 'out'}));
+    if (tg && tg.showPopup && r.text.length < 500) tg.showPopup({message: r.text}); else { o.innerHTML = `<div class="card mono">${esc(r.text)}</div>`; o.scrollIntoView(); } } catch (e) {}
+}
+async function clk(target, on) { try { await api('clock_set', {target, on}); tick(); render(); } catch (e) {} }
+async function clkFont(font) { try { await api('clock_set', {font}); tick(); render(); } catch (e) {} }
+async function cp(b) { try { const r = await api('cpic_set', b); tick(); if (r.warn) toast(r.warn, true); else toast('انجام شد'); render(); } catch (e) {} }
+async function preview() { const o = $('#pv'); o.innerHTML = '<div class="load">در حال ساخت…</div>'; try { const r = await api('cpic_preview'); o.innerHTML = `<img class="pv" src="${r.img}">`; } catch (e) { o.innerHTML = ''; } }
+async function redeem() { try { const r = await api('redeem', {code: $('#code').value}); toast(`🎁 ${fa(r.amount)} الماس اضافه شد`); await load(); } catch (e) {} }
+async function stySet(b) { try { await api('style_set', b); tick(); render(); } catch (e) {} }
+async function afkSave() { try { await api('afk_set', {text: $('#afk').value}); toast('ذخیره شد'); } catch (e) {} }
+async function kwAdd() { try { await api('kw_set', {kw: $('#kw1').value, resp: $('#kw2').value}); toast('اضافه شد'); render(); } catch (e) {} }
+async function kwDel(kw) { try { await api('kw_set', {kw, delete: true}); render(); } catch (e) {} }
+async function prof(f) { const v = f === 'name' ? $('#pn').value : $('#pb').value; try { await api('profile_set', {[f]: v}); toast('تغییر کرد'); } catch (e) {} }
+async function gift() { try { await api('admin_code', {code: $('#gc').value, amount: +$('#ga').value, max: +$('#gm').value}); toast('ساخته شد'); render(); } catch (e) {} }
+async function gdel(code) { try { await api('admin_code', {code, delete: true}); render(); } catch (e) {} }
+
+load().catch(() => { $('#app').innerHTML = '<div class="load">این صفحه فقط از داخل ربات تلگرام کار می‌کنه.<br>ربات رو باز کن و دکمه‌ی «پنل» رو بزن.</div>'; });
+</script>
+</body>
+</html>
