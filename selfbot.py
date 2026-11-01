@@ -739,20 +739,70 @@ async def cpic_cfg(uid):
     }
 
 
+def _cpic_known_ids(uid, stored: str) -> set:
+    """Ids of the clock photos WE uploaded (db list + the newest one kept in memory)."""
+    ids = {int(x) for x in (stored or "").split(",") if x.strip().isdigit()}
+    last = _cpic_last.get(uid)
+    if last is not None:
+        ids.add(last.id)
+    return ids
+
+
+async def cpic_newest_original(c, uid):
+    """The user's real profile picture = the newest profile photo that is NOT one of our clock photos."""
+    known = _cpic_known_ids(uid, await db.uget(uid, "cpic_ids", ""))
+    for p in await c.get_profile_photos("me", limit=20):
+        if p.id not in known:
+            return p
+    return None
+
+
+async def cpic_sync_base(c, uid, force=False) -> str:
+    """Make the stored base follow the user's real profile photo.
+    Returns 'updated' | 'same' | 'none' (no photo found). Without force nothing is downloaded when the newest real
+    photo is still the one the base was made from - so a NEW profile picture is picked up automatically."""
+    p = await cpic_newest_original(c, uid)
+    if p is None:
+        return "none"
+    if not force and str(p.id) == await db.uget(uid, "cpic_ref") and await cpic_get_base(c, uid) is not None:
+        return "same"
+    raw = await c.download_media(p, file=bytes)
+    if not raw:
+        return "none"
+    await cpic_set_base(uid, raw)
+    await db.uset(uid, "cpic_ref", str(p.id))
+    return "updated"
+
+
 async def cpic_get_base(c, uid, capture=False):
-    """Stored base photo bytes. capture=True: if none stored, take the current profile photo (once)."""
+    """Stored base photo bytes. capture=True: first re-sync with the user's current real profile photo."""
     import base64
+    if capture:
+        try:
+            await cpic_sync_base(c, uid)
+        except Exception as ex:                                  # noqa: BLE001
+            log.warning("profile photo sync failed: %s", ex)
     if uid not in _cpic_base:
         v = await db.uget(uid, "cpic_base")
         _cpic_base[uid] = base64.b64decode(v) if v else None
-    if _cpic_base[uid] is None and capture:
-        try:
-            raw = await c.download_profile_photo("me", file=bytes)
-            if raw:
-                await cpic_set_base(uid, raw)
-        except Exception as ex:                                  # noqa: BLE001
-            log.warning("profile photo capture failed: %s", ex)
     return _cpic_base.get(uid)
+
+
+async def cpic_change_base(c, uid) -> str:
+    """Button / command «تغییر پروفایل اصلی»: use the CURRENT real profile photo as the base (also while the clock
+    is on) and redraw right away. Returns 'updated' | 'none'."""
+    res = await cpic_sync_base(c, uid, force=True)
+    if res == "none":
+        return "none"
+    if await db.uflag(uid, "cpic", False):
+        await push_clockpic(c, uid)
+    return "updated"
+
+
+async def cpic_mark_ref(c, uid):
+    """After a custom base photo: remember the current real photo, so only a LATER profile change replaces it."""
+    p = await cpic_newest_original(c, uid)
+    await db.uset(uid, "cpic_ref", str(p.id) if p else "")
 
 
 async def cpic_set_base(uid, raw: bytes):
@@ -765,13 +815,14 @@ async def cpic_set_base(uid, raw: bytes):
 async def cpic_clear_base(uid):
     _cpic_base[uid] = None
     await db.udel(uid, "cpic_base")
+    await db.udel(uid, "cpic_ref")
 
 
-async def cpic_render(c, uid, now=None) -> bytes:
+async def cpic_render(c, uid, now=None, style=None, color=None) -> bytes:
     cfg = await cpic_cfg(uid)
     base = await cpic_get_base(c, uid)
     return await asyncio.get_running_loop().run_in_executor(
-        _POOL, clockpic.render, base, cfg["style"], cfg["color"], now or datetime.now(TZ))
+        _POOL, clockpic.render, base, style or cfg["style"], color or cfg["color"], now or datetime.now(TZ))
 
 
 async def _cpic_delete(c, ids, keep=None):
@@ -846,6 +897,7 @@ async def set_clockpic(uid, on) -> str:
             return f"آپلود عکس ناموفق بود ({type(ex).__name__})"
         return "" if base else ""
     await db.uset_flag(uid, "cpic", False)
+    _cpic_last.pop(uid, None)
     try:
         ids = {int(x) for x in (await db.uget(uid, "cpic_ids", "")).split(",") if x}
         await _cpic_delete(c, ids)
@@ -903,6 +955,7 @@ def cpic_help(cfg):
             "`.ساعت_عکس فاصله 2` (هر ۱ / ۲ / ۵ / ۱۰ دقیقه)\n"
             "`.ساعت_عکس پیش‌نمایش` — نمونه توی Saved Messages\n"
             "ریپلای روی یه عکس + `.ساعت_عکس عکس` — عکس پایه‌ی دلخواه\n"
+            "`.ساعت_عکس پایه` — پروفایلت رو عوض کردی؟ این رو بزن تا ساعت روی عکس جدیدت بیاد\n"
             "`.ساعت_عکس بازنشانی` — خاموش + فراموش کردن عکس پایه")
 
 
@@ -950,8 +1003,20 @@ async def c_clockpic(c, e, uid, arg):
         if not r or not (r.photo or (r.document and (r.document.mime_type or "").startswith("image/"))):
             return await e.edit("روی یه **عکس** ریپلای کن و بزن `.ساعت_عکس عکس`")
         await cpic_set_base(uid, await r.download_media(file=bytes))
+        await cpic_mark_ref(c, uid)
         await e.edit("✅ عکس پایه ذخیره شد")
         return await cpic_refresh(uid)
+    if sub in ("پایه", "اصلی", "تغییر", "base", "sync"):
+        await e.edit("⏳ در حال برداشتن آخرین عکس پروفایلت ...")
+        try:
+            res = await cpic_change_base(c, uid)
+        except errors.FloodWaitError as ex:
+            return await e.edit(f"⚠️ تلگرام {ex.seconds} ثانیه صبر خواست؛ بعداً دوباره بزن")
+        except Exception as ex:                                  # noqa: BLE001
+            log.warning("change clock base failed: %s", ex)
+            return await e.edit(f"⚠️ انجام نشد ({type(ex).__name__})")
+        return await e.edit("✅ ساعت از الان روی آخرین عکس پروفایلت میاد" if res == "updated"
+                            else "⚠️ عکسی توی پروفایلت پیدا نشد؛ اول یه عکس بذار")
     if sub in ("بازنشانی", "ریست", "reset"):
         err = await set_clockpic(uid, False)
         await cpic_clear_base(uid)

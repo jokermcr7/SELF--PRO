@@ -803,8 +803,11 @@ async def clock_view(uid, path, mk, back_path):
             "فونت دلخواهت رو هم انتخاب کن. «ساعت روی عکس پروفایل» رو هم از دکمه‌ی پایین فعال کن.</blockquote>"), rows
 
 
+_pv_cool: dict[int, float] = {}
+
+
 async def clockpic_view(uid, path, mk, back_path):
-    """🖼 clock drawn on the profile photo: on/off, 9 colors, 24 designs, interval, preview."""
+    """🖼 clock drawn on the profile photo: on/off, 9 colors, 29 designs, interval, preview."""
     c = selfbot.clients.get(uid)
     if not c:
         return None
@@ -824,6 +827,16 @@ async def clockpic_view(uid, path, mk, back_path):
             asyncio.create_task(selfbot.cpic_refresh(uid))
         elif act == "e" and val.isdigit() and int(val) in selfbot.CPIC_EVERY:
             await db.uset(uid, "cpic_every", val)
+        elif act == "b":
+            try:
+                res = await selfbot.cpic_change_base(c, uid)
+                note = ("\n✅ ساعت از الان روی آخرین عکس پروفایلت میاد" if res == "updated"
+                        else "\n⚠️ عکسی توی پروفایلت پیدا نشد؛ اول یه عکس بذار")
+            except errors.FloodWaitError as ex:
+                note = f"\n⚠️ تلگرام {ex.seconds} ثانیه صبر خواست؛ بعداً دوباره بزن"
+            except Exception:
+                log.exception("clockpic change base failed")
+                note = "\n⚠️ تغییر عکس پایه انجام نشد"
         elif act == "v":
             try:
                 await selfbot.cpic_get_base(c, uid, capture=not (await selfbot.cpic_cfg(uid))["on"])
@@ -833,6 +846,23 @@ async def clockpic_view(uid, path, mk, back_path):
             except Exception:
                 log.exception("clockpic preview failed")
                 note = "\n⚠️ پیش‌نمایش ساخته نشد"
+        elif act == "va":                                                   # all 5 poster designs, one album
+            if time.time() - _pv_cool.get(uid, 0) < 12:
+                note = "\n⏳ چند ثانیه صبر کن و دوباره بزن"
+            else:
+                _pv_cool[uid] = time.time()
+                try:
+                    await selfbot.cpic_get_base(c, uid, capture=not (await selfbot.cpic_cfg(uid))["on"])
+                    keys = [k for k, _n in clockpic.STYLES if k.startswith("poster")]
+                    files = []
+                    for k in keys:
+                        b = io.BytesIO(await selfbot.cpic_render(c, uid, style=k))
+                        b.name = f"{k}.jpg"
+                        files.append(b)
+                    await bot.send_file(uid, files, caption=[dict(clockpic.STYLES)[k] for k in keys])
+                except Exception:
+                    log.exception("poster preview failed")
+                    note = "\n⚠️ پیش‌نمایش پوسترها ساخته نشد"
     cfg = await selfbot.cpic_cfg(uid)
     rows = [[B("روشن ⟨✓⟩" if cfg["on"] else "خاموش ⟨✗⟩", mk("ki:t"), G if cfg["on"] else R)]]
     chips = [B(f"{v[1]} {v[0]}" + (" ✓" if k == cfg["color"] else ""), mk(f"ki:c:{k}"), G if k == cfg["color"] else R)
@@ -843,12 +873,15 @@ async def clockpic_view(uid, path, mk, back_path):
     rows += [chips[i:i + 3] for i in range(0, len(chips), 3)]
     rows.append([B(f"هر {n} دقیقه" + (" ✓" if n == cfg["every"] else ""), mk(f"ki:e:{n}"), G if n == cfg["every"] else R)
                  for n in selfbot.CPIC_EVERY])
+    rows.append([B("🔄 تغییر پروفایل اصلی", mk("ki:b"), G)])
+    rows.append([B("🖼 پیش‌نمایش پوسترها (۵ طرح)", mk("ki:va"), G)])
     rows.append([B("👁 پیش‌نمایش", mk("ki:v"), G), B("بازگشت", mk("k"), R)])
     st = dict(clockpic.STYLES)[cfg["style"]]
     text = ("<b>🖼 ساعت روی عکس پروفایل</b>\n"
             f"وضعیت: {'🟢 روشن' if cfg['on'] else '🔴 خاموش'} | طرح: <b>{st}</b> | رنگ: <b>{clockpic.COLORS[cfg['color']][0]}</b> | هر <b>{cfg['every']}</b> دقیقه\n"
             "<blockquote>ساعت روی همون عکس پروفایل فعلی‌ات کشیده میشه؛ هر چند دقیقه عکس جدید جایگزین قبلی میشه و عکس‌های اصلیت دست‌نخورده می‌مونن. "
-            "با خاموش کردن، عکس قبلیت برمی‌گرده. عکس پایه‌ی دلخواه: روی یه عکس ریپلای کن و بزن <code>.ساعت_عکس عکس</code></blockquote>" + note)
+            "با خاموش کردن، عکس قبلیت برمی‌گرده.\n🔄 پروفایلت رو عوض کردی؟ اول عکس جدید رو توی تلگرام بذار، بعد «تغییر پروفایل اصلی» رو بزن تا ساعت روی اون بیاد "
+            "(موقع روشن کردن هم خودکار آخرین پروفایلت برداشته میشه). عکس دلخواه: روی یه عکس ریپلای کن و بزن <code>.ساعت_عکس عکس</code></blockquote>" + note)
     return text, rows
 
 
