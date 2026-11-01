@@ -22,6 +22,7 @@ import secure
 import selfbot
 import utils
 import webapp
+import wheel
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("main")
@@ -48,6 +49,8 @@ gift: dict[int, dict] = {}                      # admin gift-code builder: uid -
 USERS_PER_PAGE = 8
 bcast_draft: dict[int, object] = {}               # admin announcement waiting for confirmation: uid -> Message
 bcast_busy = False
+gall_draft: dict[int, int] = {}                  # admin gift-to-everyone waiting for confirmation: uid -> amount
+gall_busy = False
 
 bot = TelegramClient(StringSession(), API_ID, API_HASH)
 login: dict[int, dict] = {}
@@ -77,6 +80,7 @@ WELCOME = """🌟 <b>به ربات سلف‌ساز خوش اومدی!</b>
 🔹 منشی خودکار و پاسخ کلمه‌ای
 🔹 ضد حذف و ادیت + ذخیره‌ی تایمردار
 🔹 ترجمه، ارز، هوا، دانلودر و ...
+🔹 🎡 گردونه‌ی شانس روزانه: هر روز تا ۲۰۰ الماس رایگان
 ━━━━━━━━━━
 🚀 <b>چطوری شروع کنم؟</b>
 1️⃣ ربات رو استارت کن
@@ -106,13 +110,13 @@ async def menu_markup(uid):
     rows = [[B("مدیریت سلف", "m:mg", R)],
             [B(f"⟦ {await db.time_left_short(uid)} | {await bal_text(uid)} الماس ⟧", "m:status", R)],
             [B("خرید الماس", "m:buy", G), B("حساب کاربری", "m:acc", G)],
-            [B("کد هدیه", "m:code", R)],
+            [B("کد هدیه", "m:code", R), B("🎡 گردونه شانس", "w:o", G)],
             [B("زیر مجموعه", "m:ref", R),
              botapi.url_btn("پشتیبانی", f"https://t.me/{SUPPORT}", R) if SUPPORT else B("پشتیبانی", "m:sup", R)]]
     if uid in ADMINS:                                   # owner-only tools
         rows.insert(3, [B("🎟 ساخت کد هدیه", "a:gift", G), B("👥 تمامی کاربران", "a:users:0", G)])
         rows.insert(4, [B("🔒 عضویت اجباری", "a:fj", G), B("🏷 کد تخفیف", "a:dsc", G)])
-        rows.insert(5, [B("💾 بکاپ دیتابیس", "a:bk", G)])
+        rows.insert(5, [B("💾 بکاپ دیتابیس", "a:bk", G), B("🎁 هدیه الماس به همه", "a:gall", G)])
     wurl = webapp.public_url()
     if wurl:                                            # Telegram Mini App (full panel with all features)
         rows.insert(0, [botapi.webapp_btn("🚀 پنل مینی‌اپ (مدیریت همه‌ی قابلیت‌ها)", wurl, G)])
@@ -522,7 +526,7 @@ async def do_code(uid, code):
     return f"🎉 کد فعال شد! +{r:,} 💎\n💎 موجودی: {db.fmt(await db.balance(uid))}"
 
 
-REASONS = {"welcome": "🎁 هدیه ورود", "referral": "👥 دعوت", "admin": "👑 ادمین", "code": "🎟 کد هدیه",
+REASONS = {"admin_gift_all": "🎁 هدیه‌ی همگانی مدیر", "wheel": "🎡 گردونه شانس", "welcome": "🎁 هدیه ورود", "referral": "👥 دعوت", "admin": "👑 ادمین", "code": "🎟 کد هدیه",
            "self_hourly": "⏱ مصرف ساعتی سلف", "self_login": "📲 ورود سلف", "purchase": "💳 خرید", "transfer_in": "📥 دریافت",
            "transfer_out": "📤 انتقال", "game_bet": "🎲 شرط بازی", "game_win": "🏆 برد بازی",
            "game_refund": "↩️ برگشت شرط", "casino": "🎰 کازینو", "dice": "🎲 تاس", "coin": "🪙 شیر یا خط"}
@@ -1093,6 +1097,15 @@ async def on_pending(e):
             pending.pop(uid, None)
             return
         return await gift_input(e, uid, kind[0], t)
+    if kind[0] == "gall":
+        if uid not in ADMINS:
+            pending.pop(uid, None)
+            return
+        n = utils.to_en_digits(t).replace(",", "").strip()
+        if not n.isdigit() or not 1 <= int(n) <= 10_000_000:
+            return await e.respond("⚠️ یه عدد بین ۱ تا ۱۰,۰۰۰,۰۰۰ بفرست (یا /start برای انصراف):")
+        pending.pop(uid, None)
+        return await gall_confirm(uid, int(n))
     if kind[0] == "fjadd":
         if uid not in ADMINS:
             pending.pop(uid, None)
@@ -1543,11 +1556,96 @@ async def bcast_run(admin, msg, targets):
         log.exception("broadcast report failed")
 
 
+async def gall_confirm(uid, amount):
+    """Preview of «give `amount` diamonds to everyone» with a confirm button."""
+    n = await db.gift_all_count()
+    gall_draft[uid] = amount
+    await botapi.send_text(
+        uid, f"<blockquote>🎁 هدیه‌ی الماس به همه</blockquote>\n💎 مقدار برای هر نفر: <b>{amount:,}</b>\n"
+             f"👥 تعداد گیرنده‌ها: <b>{n:,}</b> نفر (همه‌ی کسایی که ربات رو استارت کردن)\n"
+             f"📦 مجموع: <b>{amount * n:,}</b> 💎\n\n⚠️ بعد از تایید به‌صورت همزمان به حساب همه واریز میشه و برگشت نداره.",
+        {"inline_keyboard": [[B(f"✅ تایید و واریز به {n:,} نفر", f"a:gallok:{amount}", G)], [B("❌ لغو", "a:gallx", R)]]})
+
+
+async def gall_notify(admin, rows, amount):
+    """Tell every receiver (throttled). The diamonds are already in their accounts."""
+    global gall_busy
+    ok = fail = 0
+    try:
+        for tuid, bal in rows:
+            for attempt in (0, 1):
+                try:
+                    await botapi.send_text(tuid, f"🎁 <b>هدیه از طرف مدیریت</b>\n\nبه همه‌ی کاربران <b>{amount:,}</b> 💎 هدیه داده شد!\n"
+                                                 f"💎 موجودی جدید تو: <b>{bal:,}</b>")
+                    ok += 1
+                    break
+                except botapi.BotApiError as ex:
+                    m = re.search(r"retry after (\d+)", str(ex))
+                    if m and attempt == 0 and int(m[1]) <= 60:
+                        await asyncio.sleep(int(m[1]) + 1)
+                        continue
+                    fail += 1
+                    break
+                except Exception:
+                    fail += 1
+                    break
+            await asyncio.sleep(0.05)
+    finally:
+        gall_busy = False
+    try:
+        await botapi.send_text(admin, f"🎁 <b>هدیه‌ی همگانی تموم شد</b>\n💎 {amount:,} الماس به <b>{len(rows):,}</b> نفر واریز شد.\n"
+                                      f"📨 پیام اطلاع‌رسانی رسید به: <b>{ok:,}</b> نفر\n⚠️ نرسید: <b>{fail:,}</b> نفر (ربات رو بلاک کردن؛ الماسشون واریز شده)")
+    except Exception:
+        log.exception("gift-all report failed")
+
+
 @bot.on(events.CallbackQuery(pattern=rb"^a:", func=_need_admin))
 async def cb_admin(e):
     uid = e.sender_id
     parts = e.data.decode().split(":")
     act = parts[1]
+    if act == "gall":
+        pending[uid] = ("gall",)
+        gall_draft.pop(uid, None)
+        n = await db.gift_all_count()
+        await e.answer()
+        presets = [50, 100, 200, 500, 1000, 2000]
+        return await edit_view(
+            e, f"<blockquote>🎁 هدیه‌ی الماس به همه</blockquote>\nبه <b>{n:,}</b> کاربری که ربات رو استارت کردن، هر مقدار الماسی که بخوای به‌صورت همزمان واریز میشه.\n\n"
+               "✍️ <b>مقدار دلخواهت رو همین‌جا بفرست</b> (یه عدد، مثلاً <code>150</code>) یا یکی از دکمه‌ها رو بزن:",
+            [[B(f"{x:,}", f"a:gallp:{x}", G) for x in presets[:3]], [B(f"{x:,}", f"a:gallp:{x}", G) for x in presets[3:]],
+             [B("بازگشت", "m:menu", R)]])
+    if act == "gallp":
+        pending.pop(uid, None)
+        await e.answer()
+        return await gall_confirm(uid, int(parts[2]))
+    if act == "gallx":
+        gall_draft.pop(uid, None)
+        pending.pop(uid, None)
+        await e.answer("لغو شد")
+        return await edit_view(e, "❌ هدیه‌ی همگانی لغو شد.", [[B("بازگشت", "m:menu", R)]])
+    if act == "gallok":
+        global gall_busy
+        amount = int(parts[2])
+        if gall_draft.get(uid) != amount:
+            return await e.answer("این درخواست قدیمیه؛ دوباره از «هدیه الماس به همه» شروع کن", alert=True)
+        if gall_busy:
+            return await e.answer("یه هدیه‌ی همگانی هنوز در حال ارسال پیامه؛ کمی صبر کن", alert=True)
+        gall_draft.pop(uid, None)                          # one confirm = one payout (a double click cannot pay twice)
+        gall_busy = True
+        try:
+            rows = await db.gift_all(amount)
+        except Exception:
+            gall_busy = False
+            log.exception("gift-all failed")
+            return await e.answer("⚠️ خطا؛ هیچ الماسی واریز نشد. دوباره امتحان کن.", alert=True)
+        if not rows:
+            gall_busy = False
+            return await e.answer("هنوز هیچ کاربری ربات رو استارت نکرده", alert=True)
+        asyncio.create_task(gall_notify(uid, rows, amount))
+        await e.answer("✅ واریز شد", alert=True)
+        return await edit_view(e, f"✅ <b>{amount:,}</b> 💎 به <b>{len(rows):,}</b> نفر واریز شد.\nپیام اطلاع‌رسانی داره برای کاربرها ارسال میشه؛ گزارشش بعداً میاد.",
+                               [[B("بازگشت", "m:menu", R)]])
     if act == "bc":
         pending[uid] = ("bcast",)
         bcast_draft.pop(uid, None)
@@ -1911,6 +2009,7 @@ async def main():
     await bot.start(bot_token=BOT_TOKEN)
     await set_bot_about()
     groupgames.register(bot, ADMINS)
+    wheel.register(bot, ADMINS, send_menu)
     await groupgames.recover(bot)
     for r in await db.users_active_list():
         uid = r["user_id"]

@@ -596,3 +596,43 @@ async def claim_event(key: str) -> bool:
         return bool(ok)
     except Exception:
         return True
+
+
+# ------------------------------------------------------------------ daily lucky wheel + gift-to-everyone
+async def wheel_claim(uid, day_start, now):
+    """Atomically use today's free spin. Returns the previous `last_daily` (float) on success, None when the user
+    already spun since `day_start` (so a double click can never pay twice)."""
+    async with pool.acquire() as c:
+        async with c.transaction():
+            await c.execute("INSERT INTO wallets(user_id) VALUES($1) ON CONFLICT DO NOTHING", uid)
+            prev = await c.fetchval("SELECT last_daily FROM wallets WHERE user_id=$1 FOR UPDATE", uid) or 0.0
+            if prev >= day_start:
+                return None
+            await c.execute("UPDATE wallets SET last_daily=$2 WHERE user_id=$1", uid, now)
+            return prev
+
+
+async def wheel_release(uid, prev):
+    """Give the spin back (only used when paying the prize failed)."""
+    await pool.execute("UPDATE wallets SET last_daily=$2 WHERE user_id=$1", uid, prev)
+
+
+async def wheel_last(uid) -> float:
+    return await pool.fetchval("SELECT last_daily FROM wallets WHERE user_id=$1", uid) or 0.0
+
+
+async def gift_all_count() -> int:
+    return await pool.fetchval("SELECT count(*) FROM wallets WHERE user_id<>ALL($1::bigint[])", list(ADMINS)) or 0
+
+
+async def gift_all(amount: int, reason="admin_gift_all"):
+    """Add `amount` diamonds to EVERY wallet (owners excluded: they are unlimited) in one transaction.
+    Returns [(user_id, new_balance)]."""
+    async with pool.acquire() as c:
+        async with c.transaction():
+            rows = await c.fetch("UPDATE wallets SET diamonds=diamonds+$1 WHERE user_id<>ALL($2::bigint[]) "
+                                 "RETURNING user_id, diamonds", amount, list(ADMINS))
+            await c.executemany("INSERT INTO tx(user_id,amount,reason) VALUES($1,$2,$3)",
+                                [(r["user_id"], amount, reason) for r in rows])
+    _funded.clear()
+    return [(r["user_id"], r["diamonds"]) for r in rows]

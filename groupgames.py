@@ -41,16 +41,20 @@ MAX_BET = int(os.getenv("MAX_GAME_BET", "0")) or HARD_CAP   # 0 / unset = no lim
 FEE = int(os.getenv("GAME_FEE_PERCENT", "5"))              # PvP tax: pot 88 -> tax 4 -> prize 84
 BRAND = os.getenv("GAME_BRAND", "𝚾𝚻𝚳 𝙎𝙀𝙇𝙁")      # shown as «• — BRAND — •» on top of every game message
 _rng = random.SystemRandom()          # OS cryptographic randomness (os.urandom)
-BOT_WIN_PERCENT = min(max(float(os.getenv("BOT_WIN_PERCENT", "50")), 0.0), 100.0)   # «بازی 20» with the bot: player win chance
+# Player's chance against the bot (50 = perfectly even). Below 50 gives the house a small edge so players do not win
+# most of the time. Override with PLAYER_WIN_PERCENT (e.g. 40 = harder, 50 = even).
+PLAYER_WIN_PERCENT = min(max(float(os.getenv("PLAYER_WIN_PERCENT", "44")), 1.0), 50.0)
+PK = PLAYER_WIN_PERCENT / 50.0                             # 0.88 -> RTP 88% on every game against the bot
+BOT_WIN_PERCENT = min(max(float(os.getenv("BOT_WIN_PERCENT", str(PLAYER_WIN_PERCENT))), 0.0), 100.0)   # «بازی 20» with the bot: player win chance
 LOBBY_TIMEOUT = 180
 PANEL_TIMEOUT = 240
 MAX_OPEN_PER_USER = 2
 
 # ---- payout table (total return = bet x multiplier; the stake is already taken)
-DICE_PARITY_MULT = 2.0          # even / odd           P=1/2  -> fair (RTP 100%)
-DICE_EXACT_MULT = 6.0           # exact number         P=1/6  -> fair (RTP 100%)
-COIN_WIN_P = float(os.getenv("COIN_WIN_P", "0.5"))   # vs bot, win = x2 -> RTP 98%
-CASINO_MULT = 2.0               # casino solo: win chance 50% -> fair
+DICE_PARITY_MULT = round(2.0 * PK, 2)   # even / odd (animated Telegram dice: odds can not be changed, so the payout carries the edge)
+DICE_EXACT_MULT = round(6.0 * PK, 2)    # exact number
+COIN_WIN_P = float(os.getenv("COIN_WIN_P", str(PLAYER_WIN_PERCENT / 100)))   # vs bot, win = x2
+CASINO_MULT = round(2.0 * PK, 2)    # casino solo (animated slot)
 SLOT_777, SLOT_FRUIT, SLOT_PAIR = 3.0, 2.0, 1.3   # (legacy table, only used to rank reels)
 
 lobbies: dict[int, dict] = {}            # open PvP games (id = db lobby id)
@@ -126,6 +130,27 @@ async def rnd_ints(n, lo, hi):
     return rand_ints(n, lo, hi)
 
 
+async def hit(p):
+    """True with probability p (random.org, 1/10000 resolution)."""
+    return (await rnd_ints(1, 1, 10000))[0] <= int(round(p * 10000))
+
+
+async def roll_biased(universe, is_win):
+    """Draw a value from `universe` so that the player's chance is (natural chance x PK). The outcome is decided with
+    random.org first, then a value that matches it is drawn uniformly (so the shown number is always consistent)."""
+    universe = list(universe)
+    wins = [v for v in universe if is_win(v)]
+    loses = [v for v in universe if not is_win(v)]
+    win = bool(wins) and (not loses or await hit(len(wins) / len(universe) * PK))
+    pool = wins if win else loses
+    return pool[(await rnd_ints(1, 0, len(pool) - 1))[0]], win
+
+
+def rl_win(mode, pick, v):
+    return {"red": v in RL_RED, "black": v not in RL_RED, "even": v % 2 == 0, "odd": v % 2 == 1,
+            "low": v <= 18, "high": v >= 19, "exact": v == pick}[mode]
+
+
 async def rnd_bool():
     """Fair coin: True / False with exactly 50% each."""
     return bool((await rnd_ints(1, 0, 1))[0])
@@ -191,7 +216,7 @@ HELP = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎮 راهن
         "🎡 <code>رولت</code> — رنگ/زوج‌وفرد/بازه <b>×2</b> یا عدد دقیق ۱ تا ۳۶ <b>×36</b>\n"
         "🙈 <code>چالش 50</code> — دو نفر عدد مخفی می‌زنن؛ random.org عدد هدف رو می‌ده\n"
         f"{LN}\n"
-        "🍀 همه‌ی بازی‌ها شانسیه و شانس برد همه (و ربات) برابره؛ قرعه‌ی سکه و بازی ۲۰ از random.org\n"
+        "🍀 همه‌ی بازی‌ها شانسیه؛ قرعه‌ی سکه، رولت و بازی ۲۰ از random.org (بازی بین کاربرها کاملاً برابره)\n"
         f"{LN}\n"
         "📋 <code>بازی ها</code> — منوی بازی‌ها\n"
         "💎 <code>موجودی</code> | 🏆 <code>برترین</code> | 🔁 <code>انتقال 25</code> (ریپلای)\n"
@@ -295,7 +320,7 @@ def register(bot, admin_ids):
             t = (bet_head(P) + "\n<b>روی چی شرط می‌بندی؟ 👇</b>\n"
                  f"🔴 قرمز / ⚫ سیاه / زوج / فرد / ۱-۱۸ / ۱۹-۳۶ ← <b>×{RL_SIDE_MULT:g}</b> ({pay_of(bet, RL_SIDE_MULT):,} 💎)\n"
                  f"🎯 عدد دقیق (۱ تا ۳۶) ← <b>×{RL_EXACT_MULT:g}</b> ({pay_of(bet, RL_EXACT_MULT):,} 💎)\n"
-                 "🍀 اعداد ۱ تا ۳۶ (بدون صفر)؛ شانس همه برابره و عدد از random.org میاد\n"
+                 "🍀 اعداد ۱ تا ۳۶ (بدون صفر)؛ عدد از random.org میاد\n"
                  f"✅ انتخاب تو: <b>{RL_MODES[mode]}{(' ' + str(P['pick'])) if mode == 'exact' and P['pick'] else ''}</b>")
             def mb(k):
                 return btn(ck(mode == k) + RL_MODES[k], f"gp:{pid}:md:{k}", GREEN if k != "exact" else BLUE)
@@ -311,7 +336,6 @@ def register(bot, admin_ids):
         if solo:
             t = (bet_head(P) + "👤 حالت: <b>تک‌نفره</b> (تو و ربات)\n\nاول تو دستگاه رو می‌چرخونی، بعد ربات؛ "
                  f"نتیجه‌ی بهتر برنده‌ست {rules}\n"
-                 "شانس برد تو و ربات دقیقاً <b>برابره</b> 🍀\n"
                  f"🏆 اگه ببری: <b>×{CASINO_MULT:g}</b> ({pay_of(bet, CASINO_MULT):,} 💎) | باخت: ورودی می‌سوزه")
         else:
             t = (bet_head(P) + "👥 حالت: <b>دونفره</b>\n\nهر دو نفر یه بار دستگاه رو می‌چرخونن؛ نتیجه‌ی بهتر برنده‌ست "
@@ -614,12 +638,10 @@ def register(bot, admin_ids):
                     bal, line = await db.balance(uid), f"💥 باختی! <b>-{bet:,}</b> 💎"
                 body = f"🪙 انتخاب تو: {nm(P['pick'])}\n🪙 آمد: <b>{nm(res)}</b>\n{line}"
             elif g == "roulette":
-                v = (await rnd_ints(1, 1, 36))[0]
-                await asyncio.sleep(1.5)
                 mode = P["mode"]
+                v, win = await roll_biased(range(1, 37), lambda x: rl_win(mode, P["pick"], x))
+                await asyncio.sleep(1.5)
                 color = "🔴" if v in RL_RED else "⚫"
-                win = {"red": v in RL_RED, "black": v not in RL_RED, "even": v % 2 == 0, "odd": v % 2 == 1,
-                       "low": v <= 18, "high": v >= 19, "exact": v == P["pick"]}[mode]
                 mult = RL_EXACT_MULT if mode == "exact" else RL_SIDE_MULT
                 pay = pay_of(bet, mult) if win else 0
                 _won = win
@@ -719,7 +741,7 @@ def register(bot, admin_ids):
                    [btn("🏆 برترین‌ها", "gm:top", RED)]])
 
     MENU_TEXT = (f"<b><i>• — {html.escape(BRAND)} — •</i></b>\n\n<b>🎮 منوی بازی‌ها</b>\n{LN}\n"
-                 f"🍀 همه‌ی بازی‌ها شانسیه؛ شانس برد همه برابره\n"
+                 f"🍀 همه‌ی بازی‌ها شانسیه و قرعه‌شون از random.org میاد\n"
                  "👇 یک بازی رو بزن تا پنلش باز بشه")
 
     @bot.on(events.NewMessage(func=lambda e: e.is_group and not e.out))

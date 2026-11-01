@@ -1,6 +1,6 @@
 """Games inside the Mini App (against the bot). Everything is decided on the SERVER - the browser only animates.
 
-Fair play: every outcome comes from random.org (fallback: OS crypto RNG) and both sides always have the same chance.
+Every outcome comes from random.org (fallback: OS crypto RNG); against the bot the player's chance is PLAYER_WIN_PERCENT (default 44%).
 Players vs players still happens inside the game group (see groupgames.py)."""
 import asyncio
 import os
@@ -31,9 +31,8 @@ def _sym(r):
     return [G.SYM[i] for i in r]
 
 
-async def _hit(p):
-    """True with probability p (random.org, 1/10000 resolution)."""
-    return (await G.rnd_ints(1, 1, 10000))[0] <= int(round(p * 10000))
+_hit = G.hit
+PARITY, EXACT, SIDE, EXACT36, CASINO = 2.0, 6.0, 2.0, 36.0, 2.0     # mini-app multipliers (the edge is in the win chance)
 
 
 # ---------------------------------------------------------------- games: (uid, bet, body) -> dict(win, pay, ...)
@@ -44,9 +43,8 @@ async def g_dice(uid, bet, b):
     pick = int(b.get("pick") or 0)
     if mode == "exact" and not 1 <= pick <= 6:
         raise GameErr("یه عدد از ۱ تا ۶ انتخاب کن")
-    v = (await G.rnd_ints(1, 1, 6))[0]
-    win = v == pick if mode == "exact" else (v % 2 == 0) == (mode == "even")
-    mult = G.DICE_EXACT_MULT if mode == "exact" else G.DICE_PARITY_MULT
+    v, win = await G.roll_biased(range(1, 7), lambda x: x == pick if mode == "exact" else (x % 2 == 0) == (mode == "even"))
+    mult = EXACT if mode == "exact" else PARITY
     return {"win": win, "pay": G.pay_of(bet, mult) if win else 0, "v": v, "mode": mode, "pick": pick, "mult": mult}
 
 
@@ -66,29 +64,22 @@ async def g_roulette(uid, bet, b):
     pick = int(b.get("pick") or 0)
     if mode == "exact" and not 1 <= pick <= 36:
         raise GameErr("یه عدد از ۱ تا ۳۶ انتخاب کن")
-    v = (await G.rnd_ints(1, 1, 36))[0]
+    v, win = await G.roll_biased(range(1, 37), lambda x: G.rl_win(mode, pick, x))
     red = v in G.RL_RED
-    win = {"red": red, "black": not red, "even": v % 2 == 0, "odd": v % 2 == 1, "low": v <= 18, "high": v >= 19,
-           "exact": v == pick}[mode]
-    mult = G.RL_EXACT_MULT if mode == "exact" else G.RL_SIDE_MULT
+    mult = EXACT36 if mode == "exact" else SIDE
     return {"win": win, "pay": G.pay_of(bet, mult) if win else 0, "v": v, "red": red, "mode": mode, "pick": pick, "mult": mult}
 
 
 async def g_casino(uid, bet, b):
-    rounds, outcome = [], None
-    for _ in range(4):                                       # tie -> both spin again, max 4 rounds, then refund
-        mv, bv = await G.rnd_ints(2, 1, 64)
+    win = await _hit(G.PLAYER_WIN_PERCENT / 100)             # outcome first (random.org) ...
+    while True:                                              # ... then two spins that match it
+        mv, bv = G._rng.randint(1, 64), G._rng.randint(1, 64)
         mr, _m, ml, mk = G.slot_eval(mv)
         br, _m2, bl, bk = G.slot_eval(bv)
-        rounds.append({"me": _sym(mr), "bot": _sym(br), "me_label": ml, "bot_label": bl})
-        if mk != bk:
-            outcome = mk > bk
+        if mk != bk and (mk > bk) == win:
             break
-    if outcome is True:
-        return {"win": True, "pay": G.pay_of(bet, G.CASINO_MULT), "rounds": rounds}
-    if outcome is False:
-        return {"win": False, "pay": 0, "rounds": rounds}
-    return {"win": None, "pay": bet, "rounds": rounds}        # tie after 4 rounds: stake back
+    return {"win": win, "pay": G.pay_of(bet, CASINO) if win else 0,
+            "rounds": [{"me": _sym(mr), "bot": _sym(br), "me_label": ml, "bot_label": bl}]}
 
 
 async def g_duel(uid, bet, b):
@@ -102,17 +93,13 @@ async def g_chal(uid, bet, b):
     pick = int(b.get("pick") or 0)
     if not 1 <= pick <= N:
         raise GameErr(f"یه عدد مخفی از ۱ تا {N} انتخاب کن")
-    bot = (await G.rnd_ints(1, 1, N))[0]
-    t = 1
-    for _ in range(8):
-        t = (await G.rnd_ints(1, 1, N))[0]
-        if gameplus._dist(pick, t) != gameplus._dist(bot, t):
+    win = await _hit(G.PLAYER_WIN_PERCENT / 100)
+    while True:                                              # bot number + target that produce the decided outcome
+        bot, t = G._rng.randint(1, N), G._rng.randint(1, N)
+        dm, dbt = gameplus._dist(pick, t), gameplus._dist(bot, t)
+        if dm != dbt and (dm < dbt) == win:
             break
-    if pick == bot or gameplus._dist(pick, t) == gameplus._dist(bot, t):
-        win, how = await G.rnd_bool(), "coin"
-    else:
-        win, how = gameplus._dist(pick, t) < gameplus._dist(bot, t), "near"
-    return {"win": win, "pay": _prize(bet) if win else 0, "pick": pick, "bot": bot, "target": t, "how": how,
+    return {"win": win, "pay": _prize(bet) if win else 0, "pick": pick, "bot": bot, "target": t, "how": "near",
             "tax": bet * 2 * G.FEE // 100}
 
 
@@ -154,7 +141,7 @@ async def play(uid, name, body):
 
 
 def meta():
-    return {"min_bet": G.MIN_BET, "max_bet": 0 if G.MAX_BET >= G.HARD_CAP else G.MAX_BET, "fee": G.FEE,
+    return {"min_bet": G.MIN_BET, "max_bet": 0 if G.MAX_BET >= G.HARD_CAP else G.MAX_BET, "fee": G.FEE, "win_pct": round(G.PLAYER_WIN_PERCENT),
             "game_link": os.getenv("GAME_GROUP_LINK", "").strip(), "ch_n": gameplus.CH_N,
-            "mult": {"dice_parity": G.DICE_PARITY_MULT, "dice_exact": G.DICE_EXACT_MULT, "coin": 2, "roulette_side": G.RL_SIDE_MULT,
-                     "roulette_exact": G.RL_EXACT_MULT, "casino": G.CASINO_MULT}}
+            "mult": {"dice_parity": PARITY, "dice_exact": EXACT, "coin": 2, "roulette_side": SIDE,
+                     "roulette_exact": EXACT36, "casino": CASINO}}
