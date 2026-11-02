@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>پنل سلف</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-:root{--bg:#070709;--card:#121216;--card2:#1b1b21;--line:#2a2a31;--tx:#ffffff;--mut:#9d9da8;--acc:#ff1f3d;--acc2:#ff5a6e;--acc-tx:#ffffff;--red:#ff6b78;--ok:#ffffff;--glow:0 0 22px #ff1f3d66}
+:root{--bg:#070709;--card:#121216d9;--card2:#1b1b21d9;--line:#2a2a31;--tx:#ffffff;--mut:#9d9da8;--acc:#ff1f3d;--acc2:#ff5a6e;--acc-tx:#ffffff;--red:#ff6b78;--ok:#ffffff;--glow:0 0 22px #ff1f3d66}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--tx);font-family:Vazirmatn,Tahoma,system-ui,-apple-system,sans-serif;font-size:15px}
-body{background:radial-gradient(520px 260px at 50% -70px,#4a0713 0%,transparent 70%),var(--bg);padding:0 14px calc(86px + env(safe-area-inset-bottom));min-height:100vh}
+html{background:#030303}html,body{margin:0;color:var(--tx);font-family:Vazirmatn,Tahoma,system-ui,-apple-system,sans-serif;font-size:15px}
+body{background:transparent;padding:0 14px calc(86px + env(safe-area-inset-bottom));min-height:100vh}
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 input,textarea{font:inherit;color:var(--tx);background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 12px;width:100%;outline:none}
 input:focus,textarea:focus{border-color:var(--acc)}
@@ -42,7 +42,7 @@ header{display:flex;align-items:center;gap:12px;padding:16px 2px 6px}
 .sw::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.2s}
 .sw.on{background:var(--acc)}.sw.on::after{inset-inline-start:23px;background:#fff}
 .sec-t{font-weight:800;font-size:16px;margin:20px 2px 6px}
-nav{position:fixed;inset-inline:0;bottom:0;display:flex;background:rgba(9,9,11,.96);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom));z-index:9}
+nav{position:fixed;inset-inline:0;bottom:0;display:flex;background:rgba(6,6,8,.84);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom));z-index:9}
 nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;color:var(--mut);padding:6px 0;border-radius:12px}
 nav button b{font-size:21px;font-weight:400;filter:grayscale(1) opacity(.7)}
 nav button.on{color:#fff}nav button.on b::after{content:'';display:block;width:18px;height:3px;border-radius:3px;background:var(--acc);margin:2px auto 0;box-shadow:var(--glow)}nav button.on b{filter:none}
@@ -93,16 +93,60 @@ code,.code{background:var(--card2);border-radius:8px;padding:3px 8px;font-family
 .betrow{display:flex;gap:8px;flex-wrap:wrap}.betrow .opt{flex:1;min-width:58px}
 .bal{display:inline-flex;gap:6px;align-items:center;background:#2e0a12;border:1px solid #5a101c;border-radius:99px;padding:5px 12px;font-size:13px;font-weight:700}
 .cdn{margin:2px 0 6px}.num9{display:grid;grid-template-columns:repeat(9,1fr);gap:5px;direction:ltr}.num9 .opt{padding:10px 0}
+
+/* ===== space background (from mmd.html): glow sheen + floating glows + starfield + planet + vignette + grain ===== */
+.sbg{position:fixed;inset:0;z-index:-1;background:linear-gradient(115deg,transparent 36%,#ffffff0a 47%,#ffffff12 50%,#ffffff0a 53%,transparent 64%),radial-gradient(60% 50% at 15% 10%,#ffffff12,transparent 70%),radial-gradient(50% 45% at 90% 80%,#ffffff0d,transparent 70%),#030303}
+.sbg:before,.sbg:after{content:"";position:absolute;border-radius:50%;will-change:transform}
+.sbg:before{width:46vmax;height:46vmax;left:28%;top:28%;background:radial-gradient(circle,#ffffff14,transparent 65%);animation:sdr 22s ease-in-out infinite alternate}
+.sbg:after{width:40vmax;height:40vmax;right:4%;bottom:-10%;background:radial-gradient(circle,#ffffff10,transparent 65%);animation:sdr 26s ease-in-out -8s infinite alternate-reverse}
+@keyframes sdr{to{transform:translate(-12vw,8vh) scale(1.2)}}
+.sbl{position:fixed;z-index:-1;border-radius:50%;opacity:.26;animation:sfl 14s ease-in-out infinite alternate;will-change:transform}
+.sb1{width:560px;height:560px;top:-220px;right:-170px;background:radial-gradient(circle,#fff,transparent 68%)}
+.sb2{width:520px;height:520px;bottom:-220px;left:-170px;background:radial-gradient(circle,#fff,transparent 68%);animation-delay:-6s}
+@keyframes sfl{to{transform:translate(-50px,70px) scale(1.15)}}
+#sp,.svig,.sgrain,.splanet{position:fixed;z-index:-1;pointer-events:none}
+#sp{inset:0;width:100%;height:100%;transform:translateZ(0);contain:strict}
+.svig{inset:0;background:radial-gradient(120% 90% at 50% 45%,transparent 52%,#000000c0 100%)}
+.sgrain{inset:0;opacity:.07;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+.splanet{width:50vmin;height:50vmin;left:-16vmin;bottom:-22vmin;border-radius:50%;background:radial-gradient(circle at 74% 26%,#fafafa,#9b9b9b 30%,#3b3b3b 55%,#070707 78%);box-shadow:0 0 100px #ffffff30,inset 12px 12px 50px #ffffff55,inset -50px -50px 100px #000;animation:spf 30s ease-in-out infinite alternate}
+@keyframes spf{to{transform:translate(4vmin,-3vmin) rotate(6deg)}}
+html[data-pq="2"] .sbl,html[data-pq="2"] .sbg:before,html[data-pq="2"] .sbg:after,html[data-pq="3"] .sbl,html[data-pq="3"] .sbg:before,html[data-pq="3"] .sbg:after,html[data-pq="3"] .splanet{animation:none}
+html[data-pq="2"] .sgrain,html[data-pq="3"] .sgrain{display:none}
+/* glass cards so the background shows through */
+.card{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+html[data-pq="2"] .card,html[data-pq="3"] .card{-webkit-backdrop-filter:none;backdrop-filter:none}
+
+/* ===== lucky wheel ===== */
+.wh-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.wh-hero{text-align:center}.wh-hero .ttl{font-size:17px;margin:6px 0 2px}
+.wbox{position:relative;width:min(350px,calc(100vw - 36px));aspect-ratio:1/1;margin:6px auto 8px}
+.wbox::before{content:"";position:absolute;inset:7% 7% 1%;border-radius:50%;background:radial-gradient(circle,#ffb43c66,transparent 68%);filter:blur(16px);animation:wglow 3s ease-in-out infinite alternate}
+@keyframes wglow{to{opacity:.5;transform:scale(1.07)}}
+#wc{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
+.wst{text-align:center;margin:2px 0 12px;min-height:44px}
+.wst .big2{font-size:22px;font-weight:800}.wst .cdn2{font-size:26px;font-weight:800;letter-spacing:1px;direction:ltr;unicode-bidi:isolate}
+.wcard{border-color:#5a101c;background:linear-gradient(150deg,#2a0a10d9,#121216d9)}
+.wcard.rdy{animation:wpulse 1.8s ease-in-out infinite}
+@keyframes wpulse{50%{box-shadow:0 0 0 1px #ff1f3d88,0 0 26px #ff1f3d55}}
+.orow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}.orow:last-of-type{border:0}
+.orow .v{width:74px;font-weight:800}.orow .p{width:52px;text-align:left;color:var(--mut);font-size:13px}
+.obar{flex:1;height:9px;border-radius:99px;background:var(--card2);overflow:hidden}.obar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#ff2f4b,#ffb43c)}
+.wres{position:fixed;inset:0;z-index:55;display:grid;place-items:center;padding:20px;background:#000b;-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);animation:wfade .25s}
+@keyframes wfade{from{opacity:0}}
+.wres .wbx{width:min(330px,100%);text-align:center;border-radius:26px;padding:26px 18px 20px;background:linear-gradient(160deg,#3a0a14,#14080b 70%);border:1px solid #7a1626;box-shadow:0 0 60px #ff1f3d44;animation:pop .45s cubic-bezier(.2,1.4,.4,1)}
+.wres .gem{font-size:56px;filter:drop-shadow(0 6px 18px #5cf)}.wres .amt{font-size:54px;font-weight:900;line-height:1.1;background:linear-gradient(180deg,#fff2b8,#ffb43c);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 14px #ff9a2a77)}
+.wres small{display:block;color:var(--mut);margin:6px 0 16px;line-height:1.8}
 </style>
 </head>
 <body>
+<div class="sbg"></div><div class="sbl sb1"></div><div class="sbl sb2"></div><canvas id="sp"></canvas><div class="splanet"></div><div class="svig"></div><div class="sgrain"></div>
 <div id="toast"></div>
 <div id="app"><div class="load">در حال بارگذاری…</div></div>
 <nav id="nav"></nav>
 
 <script>
 const tg = window.Telegram && Telegram.WebApp;
-if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('#070709'); tg.setBackgroundColor('#070709'); } catch (e) {} }
+if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('#030303'); tg.setBackgroundColor('#030303'); } catch (e) {} }
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fa = n => Number(n).toLocaleString('fa-IR');
@@ -127,8 +171,9 @@ function go(t, sub) { TAB = t; SUB = sub || null; FEAT = null; window.scrollTo(0
 function back() { if (SUB) { SUB = null; render(); } }
 if (tg) { tg.BackButton.onClick(() => { SUB ? back() : tg.close(); }); }
 
-async function load() { S = (await api('state')); render(); }
+async function load() { S = (await api('state')); if (new URLSearchParams(location.search).get('go') === 'wheel') go('home', 'wheel'); else render(); }
 async function render() {
+  wheelStop();
   nav();
   if (tg) { SUB ? tg.BackButton.show() : tg.BackButton.hide(); }
   const el = $('#app');
@@ -145,6 +190,7 @@ function header() {
 }
 const noSelf = () => !S.has_self ? `<div class="card"><div class="ttl">هنوز سلف نساختی</div><div class="dsc">برای ساخت سلف باید با شماره‌ات وارد بشی؛ این کار فقط داخل چت ربات انجام میشه.</div><br><button class="btn" onclick="api('menu').then(()=>{toast('منوی ربات فرستاده شد');tg&&setTimeout(()=>tg.close(),700)})">ساخت سلف داخل ربات</button></div>` : '';
 
+const wheelCard = () => `<div class="card wcard ${S.wheel_ready ? 'rdy' : ''}" onclick="openWheel()"><div class="row"><div class="grow"><div class="ttl">🎡 گردونه شانس روزانه</div><div class="dsc">روزی یک‌بار رایگان بچرخون و تا ۲۰۰ الماس ببر</div></div><span class="pill ${S.wheel_ready ? 'on' : ''}">${S.wheel_ready ? '🎁 آماده!' : 'فردا'}</span></div></div>`;
 const VIEWS = {
   async home() {
     const st = !S.has_self ? ['ساخته نشده', ''] : S.running ? (S.selfon ? ['فعال و روشن', 'on'] : ['خاموش (هزینه کسر میشه)', '']) : ['متوقف (الماس کافی نیست)', 'bad'];
@@ -158,6 +204,7 @@ const VIEWS = {
       <button class="q" onclick="go('wallet')"><i>👥</i>دعوت</button>
     </div>
     ${noSelf()}
+    ${wheelCard()}
     <div class="card"><div class="row"><div class="grow"><div class="ttl">📡 وضعیت سلف</div><div class="dsc">مصرف ${S.rate} الماس در ساعت</div></div><span class="pill ${st[1]}">${st[0]}</span></div></div>
     <div class="sec-t">میانبرها</div>
     <div class="card" onclick="go('games')" style="border-color:#5a101c;background:linear-gradient(150deg,#2a0a10,#121216)"><div class="row"><div class="grow"><div class="ttl">🎮 بازی‌ها (مستقیم داخل مینی‌اپ)</div><div class="dsc">تاس، سکه، رولت، کازینو، بازی ۲۰ و چالش — با ربات، منصفانه با random.org</div></div>›</div></div>
@@ -173,6 +220,7 @@ const VIEWS = {
       ['casino', '🎰', 'کازینو', 'اسلات تو و ربات • ×۲'], ['duel', '⚔️', 'بازی ۲۰', 'قرعه‌ی عدد با ربات'], ['chal', '🙈', 'چالش عدد مخفی', 'عدد مخفی ۱ تا ۹']];
     return `<div class="hero"><small>🍀 همه‌ی بازی‌ها شانسیه</small><div class="ttl" style="font-size:18px;margin:6px 0">قرعه‌ی واقعی با random.org</div>
       <div class="sub">قرعه‌ی همه‌ی بازی‌ها از random.org • حداقل ورودی ${fa(GM.min_bet)} الماس • شانس برنده‌شدن هر دور حدود ${fa(GM.win_pct)}٪</div></div>
+    ${wheelCard()}
     <div class="sec-t">🤖 بازی با ربات (همین‌جا)</div>
     <div class="grid c2">${L.map(g => `<button class="gcard" onclick="openGame('${g[0]}')"><i>${g[1]}</i><b>${g[2]}</b><small>${g[3]}</small></button>`).join('')}</div>
     <div class="sec-t">👥 بازی با کاربران (داخل گپ)</div>
@@ -383,6 +431,168 @@ async function play() {
   catch (e) {} finally { busy = false; btn.disabled = false; }
 }
 
+// ---------- lucky wheel (canvas). The SERVER decides + pays the prize; the browser only animates to the slice it is told.
+const WCOL = ['#e23448', '#f5a046', '#24a094', '#7c34c8', '#ecc65a', '#247cd6', '#d8287c', '#3cb46e'];
+const PFA = n => String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+const mod = (a, n) => ((a % n) + n) % n;
+const mixc = (hex, t) => { const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255, m = c => Math.round(c + (255 - c) * t); return `rgb(${m(r)},${m(g)},${m(b)})`; };
+let WH = null;
+function wheelStop() {
+  if (WH) { WH.dead = true; cancelAnimationFrame(WH.raf); clearInterval(WH.cd); WH = null; }
+  document.querySelectorAll('.wres').forEach(x => x.remove());
+}
+const wgeo = s => ({cx: s / 2, cy: s * .535, ro: s * .452, ri: s * .392, hub: s * .092});
+function drawGem(g, x, y, r) {
+  g.beginPath(); g.moveTo(x - r, y - r * .35); g.lineTo(x - r * .55, y - r * .95); g.lineTo(x + r * .55, y - r * .95); g.lineTo(x + r, y - r * .35); g.lineTo(x, y + r); g.closePath();
+  const gr = g.createLinearGradient(x - r, y - r, x + r, y + r); gr.addColorStop(0, '#e2f8ff'); gr.addColorStop(.5, '#7fd0ff'); gr.addColorStop(1, '#3a86e0'); g.fillStyle = gr; g.fill();
+  g.lineWidth = Math.max(1, r * .12); g.strokeStyle = 'rgba(255,255,255,.92)'; g.lineJoin = 'round'; g.stroke();
+  g.beginPath(); g.moveTo(x - r, y - r * .35); g.lineTo(x + r, y - r * .35); g.moveTo(x - r * .55, y - r * .95); g.lineTo(x - r * .2, y - r * .35); g.lineTo(x, y + r);
+  g.moveTo(x + r * .55, y - r * .95); g.lineTo(x + r * .2, y - r * .35); g.lineTo(x, y + r); g.stroke();
+}
+function wheelBase(s, dpr, order) {                       // the turning part: slices + numbers + little gems (drawn once)
+  const gm = wgeo(s), R = gm.ri - 1, N = order.length, px = Math.ceil(2 * R * dpr), c = document.createElement('canvas'); c.width = c.height = px;
+  const g = c.getContext('2d'); g.scale(px / (2 * R), px / (2 * R)); g.translate(R, R);
+  const step = Math.PI * 2 / N;
+  for (let i = 0; i < N; i++) {
+    const a0 = i * step - Math.PI / 2, col = WCOL[i % WCOL.length];
+    g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, R, a0, a0 + step); g.closePath();
+    const gr = g.createRadialGradient(0, 0, R * .1, 0, 0, R); gr.addColorStop(0, mixc(col, .45)); gr.addColorStop(.62, col); gr.addColorStop(1, col);
+    g.fillStyle = gr; g.fill(); g.lineWidth = R * .012; g.strokeStyle = 'rgba(255,255,255,.8)'; g.stroke();
+  }
+  for (let i = 0; i < N; i++) {
+    g.save(); g.rotate((i + .5) * step); g.translate(0, -R * .64);
+    g.font = `900 ${R * .21}px system-ui,-apple-system,Arial,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.lineWidth = R * .05; g.strokeStyle = 'rgba(25,10,45,.88)'; g.strokeText(order[i], 0, 0); g.fillStyle = '#fff'; g.fillText(order[i], 0, 0);
+    g.translate(0, -R * .225); drawGem(g, 0, 0, R * .06); g.restore();
+  }
+  return {canvas: c, R};
+}
+function wheelRim(s, dpr) {                               // static top layer: gold ring + hub
+  const gm = wgeo(s), c = document.createElement('canvas'); c.width = c.height = Math.ceil(s * dpr); const g = c.getContext('2d'); g.scale(c.width / s, c.width / s);
+  const rm = (gm.ro + gm.ri) / 2;
+  g.save(); g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = s * .03; g.shadowOffsetY = s * .01;
+  g.beginPath(); g.arc(gm.cx, gm.cy, rm, 0, 7); g.lineWidth = gm.ro - gm.ri;
+  let st;
+  if (g.createConicGradient) { st = g.createConicGradient(0, gm.cx, gm.cy); [[0, '#8a5a0a'], [.12, '#ffe58a'], [.25, '#a8700e'], [.38, '#fff0a8'], [.5, '#8a5a0a'], [.62, '#ffe58a'], [.75, '#a8700e'], [.88, '#fff0a8'], [1, '#8a5a0a']].forEach(a => st.addColorStop(a[0], a[1])); }
+  else { st = g.createLinearGradient(0, 0, s, s); st.addColorStop(0, '#ffe58a'); st.addColorStop(.5, '#a8700e'); st.addColorStop(1, '#ffe58a'); }
+  g.strokeStyle = st; g.stroke(); g.restore();
+  g.lineWidth = s * .006; g.strokeStyle = '#5a3604';
+  g.beginPath(); g.arc(gm.cx, gm.cy, gm.ro, 0, 7); g.stroke(); g.beginPath(); g.arc(gm.cx, gm.cy, gm.ri, 0, 7); g.stroke();
+  const hr = gm.hub, hg = g.createRadialGradient(gm.cx - hr * .3, gm.cy - hr * .3, hr * .1, gm.cx, gm.cy, hr); hg.addColorStop(0, '#fff0a8'); hg.addColorStop(1, '#a8700e');
+  g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = s * .025; g.beginPath(); g.arc(gm.cx, gm.cy, hr, 0, 7); g.fillStyle = hg; g.fill(); g.restore();
+  g.lineWidth = s * .006; g.strokeStyle = '#5a3604'; g.beginPath(); g.arc(gm.cx, gm.cy, hr, 0, 7); g.stroke();
+  g.beginPath(); g.arc(gm.cx, gm.cy, hr * .72, 0, 7); g.fillStyle = '#1e123c'; g.fill();
+  drawGem(g, gm.cx, gm.cy + hr * .06, hr * .5);
+  return c;
+}
+function wheelFrame(ts) {
+  const W = WH; if (!W || W.dead) return;
+  W.raf = requestAnimationFrame(wheelFrame);
+  const dt = Math.min(Math.max((ts - W.last) / 1000, 0), .05); W.last = ts;
+  if (W.mode === 'idle') { W.ang += (W.reduce ? 0 : (W.d.ready ? 9 : 3)) * dt; W.vel = 0; }
+  else if (W.mode === 'accel') { W.vel += (W.v0 - W.vel) * (1 - Math.exp(-dt * 5)); W.ang += W.vel * dt; }
+  else if (W.mode === 'decel') {
+    const t = Math.min((ts - W.t0) / W.D, 1), p = 1 - Math.pow(1 - t, 3), na = W.a1 + W.delta * p;
+    W.vel = dt > 0 ? (na - W.ang) / dt : W.vel; W.ang = na;
+    if (t >= 1) { W.mode = 'done'; W.vel = 0; wheelDone(); }
+  }
+  const N = W.d.order.length, under = Math.floor(mod(-W.ang, 360) / (360 / N));
+  if (under !== W.under) {
+    W.under = under;
+    if (W.mode === 'accel' || W.mode === 'decel') { W.kick = 1; const now = performance.now(); if (now - W.lastTick > 70) { W.lastTick = now; if (tg && tg.HapticFeedback) try { tg.HapticFeedback.impactOccurred('light'); } catch (e) {} } }
+  }
+  W.kick *= Math.exp(-dt * 12);
+  const g = W.ctx, s = W.s, gm = W.gm; g.setTransform(W.dpr, 0, 0, W.dpr, 0, 0); g.clearRect(0, 0, s, s);
+  g.save(); g.translate(gm.cx, gm.cy); g.rotate(W.ang * Math.PI / 180); g.drawImage(W.base.canvas, -W.base.R, -W.base.R, W.base.R * 2, W.base.R * 2); g.restore();
+  g.drawImage(W.rim, 0, 0, s, s);
+  const ph = Math.floor(ts / (W.mode === 'idle' ? 260 : 90)) % 2, rm = (gm.ro + gm.ri) / 2;
+  for (let i = 0; i < 24; i++) {                          // chasing bulbs on the ring
+    const a = i * Math.PI / 12, x = gm.cx + Math.sin(a) * rm, y = gm.cy - Math.cos(a) * rm, on = (i + ph) % 2 === 0;
+    if (on) { const gl = g.createRadialGradient(x, y, 0, x, y, s * .03); gl.addColorStop(0, 'rgba(255,240,150,.9)'); gl.addColorStop(1, 'rgba(255,240,150,0)'); g.fillStyle = gl; g.beginPath(); g.arc(x, y, s * .03, 0, 7); g.fill(); }
+    g.beginPath(); g.arc(x, y, s * .0125, 0, 7); g.fillStyle = on ? '#fffbd0' : '#8a5a12'; g.fill(); g.lineWidth = s * .003; g.strokeStyle = '#4a2c04'; g.stroke();
+  }
+  g.save(); g.translate(gm.cx, s * .012); g.rotate(-W.kick * .34);   // pointer: flicks every time a peg passes
+  const pw = s * .062, pl = gm.cy - gm.ro + s * .058 - s * .012;
+  g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = s * .02; g.shadowOffsetY = s * .008;
+  g.beginPath(); g.moveTo(-pw, 0); g.lineTo(pw, 0); g.lineTo(0, pl); g.closePath();
+  const pg = g.createLinearGradient(-pw, 0, pw, pl); pg.addColorStop(0, '#fff0a8'); pg.addColorStop(1, '#d08a10'); g.fillStyle = pg; g.fill(); g.shadowColor = 'transparent';
+  g.lineWidth = s * .007; g.strokeStyle = '#6a3c00'; g.lineJoin = 'round'; g.stroke();
+  g.beginPath(); g.arc(0, s * .03, s * .014, 0, 7); g.fillStyle = '#d4293c'; g.fill(); g.lineWidth = s * .004; g.stroke();
+  g.restore();
+}
+const wheelLeft = d => Math.max(0, d.left_s - Math.floor((Date.now() - d.t0) / 1000));
+const hms = sec => [Math.floor(sec / 3600), Math.floor(sec % 3600 / 60), sec % 60].map(x => PFA(String(x).padStart(2, '0'))).join(':');
+async function wheelReload() {
+  const W = WH; if (!W) return;
+  try { const nd = await api('wheel'); nd.t0 = Date.now(); if (WH === W) { W.d = nd; window._wd = nd; S.wheel_ready = nd.ready; } } catch (e) {}
+}
+async function wheelStatus() {
+  const W = WH; if (!W || W.mode !== 'idle') return;
+  const d = W.d, st = $('#wst'), bt = $('#wbtn'); if (!st || !bt || W.busy) return;
+  if (d.ready) { st.innerHTML = '<div class="big2">✅ امروز هنوز نچرخوندی!</div><div class="dsc">دکمه‌ی پایین رو بزن و شانست رو امتحان کن 🍀</div>'; bt.disabled = false; bt.textContent = '🎡 بچرخون!'; return; }
+  const left = wheelLeft(d);
+  st.innerHTML = `${d.today ? `<div class="dsc">🎁 جایزه‌ی امروز: <b>${fa(d.today)}</b> 💎</div>` : ''}<div class="dsc">گردونه‌ی بعدی (۰۰:۰۰ به وقت تهران) تا</div><div class="cdn2 num">${hms(left)}</div>`;
+  bt.disabled = true; bt.textContent = '⏳ فردا دوباره بیا';
+  if (left <= 0 && !W.refetching) { W.refetching = true; await wheelReload(); W.refetching = false; }
+}
+function wheelInit() {
+  const d = window._wd, cv = $('#wc'), box = $('#wbox'); if (!cv || !box || !d) return;
+  const s = Math.max(200, Math.round(box.clientWidth)), dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  cv.width = cv.height = Math.round(s * dpr); d.t0 = Date.now();
+  WH = {d, cv, ctx: cv.getContext('2d'), s, dpr, gm: wgeo(s), ang: Math.random() * 360, vel: 0, v0: 720, mode: 'idle', raf: 0, last: performance.now(), kick: 0, under: -1,
+        lastTick: 0, busy: false, dead: false, cd: 0, reduce: matchMedia('(prefers-reduced-motion:reduce)').matches, base: wheelBase(s, dpr, d.order), rim: wheelRim(s, dpr)};
+  WH.raf = requestAnimationFrame(wheelFrame); wheelStatus(); WH.cd = setInterval(wheelStatus, 1000);
+}
+async function wheelSpin() {
+  const W = WH; if (!W || W.busy || W.mode !== 'idle' || !W.d.ready) return;
+  W.busy = true; const bt = $('#wbtn'); bt.disabled = true; bt.textContent = '🎡 در حال چرخش…'; $('#wst').innerHTML = '<div class="big2">🤞 موفق باشی!</div>';
+  W.mode = 'accel'; W.vel = Math.max(W.vel, 40); const t0 = performance.now();
+  if (tg && tg.HapticFeedback) try { tg.HapticFeedback.impactOccurred('medium'); } catch (e) {}
+  let r;
+  try { r = await api('wheel_spin'); }
+  catch (e) { W.mode = 'idle'; W.busy = false; await wheelReload(); wheelStatus(); return; }
+  const wait = 900 - (performance.now() - t0); if (wait > 0) await sleep(wait);   // reach cruise speed first (smooth hand-over)
+  if (WH !== W) return;                                                          // user left the page; the prize is already paid
+  const N = W.d.order.length, seg = 360 / N, centre = (r.idx + .5) * seg + (Math.random() * 2 - 1) * seg * .3;
+  const need = mod(360 - centre - W.ang, 360), v0 = Math.max(W.vel, 300), want = v0 * 4.6 / 3;
+  const delta = need + 360 * Math.max(2, Math.round((want - need) / 360));
+  W.a1 = W.ang; W.delta = delta; W.D = 3 * delta / v0 * 1000; W.t0 = performance.now(); W.res = r; W.mode = 'decel';   // ease-out cubic: starts at exactly v0, ends at 0 on the slice
+}
+function wheelDone() {
+  const W = WH; if (!W) return; const r = W.res, d = W.d;
+  d.ready = false; d.today = r.prize; d.left_s = r.left_s; d.t0 = Date.now(); S.wheel_ready = false; S.balance = r.balance; S.balance_text = r.balance_text;
+  const b = $('#wbal'); if (b) b.textContent = '💎 ' + r.balance_text;
+  W.busy = false; W.mode = 'idle';
+  if (tg && tg.HapticFeedback) try { tg.HapticFeedback.notificationOccurred('success'); } catch (e) {}
+  confetti(r.prize >= 120 ? 230 : 140);
+  const o = document.createElement('div'); o.className = 'wres';
+  o.innerHTML = `<div class="wbx"><div class="gem">💎</div><div class="amt num">+${fa(r.prize)}</div><div class="ttl" style="font-size:19px;margin-top:4px">${r.prize >= 120 ? '🔥 جایزه‌ی بزرگ!' : '🎉 تبریک!'}</div>
+    <small>الماس به حسابت اضافه شد<br>موجودی جدید: <b>${esc(r.balance_text)}</b><br>گردونه‌ی بعدی ${esc(r.left_text)} دیگه 🕛</small><button class="btn" onclick="this.closest('.wres').remove()">عالیه!</button></div>`;
+  document.body.appendChild(o); wheelStatus();
+}
+function confetti(n) {
+  const c = document.createElement('canvas'); c.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:70'; document.body.appendChild(c);
+  const W = c.width = innerWidth, H = c.height = innerHeight, g = c.getContext('2d'), cols = ['#ff5a6e', '#ffd25a', '#5adcff', '#9bff9f', '#ff8cf0', '#ffffff'];
+  const P = Array.from({length: n}, () => ({x: W / 2 + (Math.random() - .5) * 90, y: H * .46, vx: (Math.random() - .5) * 15, vy: -Math.random() * 17 - 4, w: 5 + Math.random() * 6, h: 8 + Math.random() * 8, r: Math.random() * 6, vr: (Math.random() - .5) * .4, c: cols[Math.floor(Math.random() * cols.length)]}));
+  const t0 = performance.now();
+  (function f(t) { g.clearRect(0, 0, W, H); for (const p of P) { p.vy += .42; p.vx *= .995; p.x += p.vx; p.y += p.vy; p.r += p.vr; g.save(); g.translate(p.x, p.y); g.rotate(p.r); g.fillStyle = p.c; g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); g.restore(); }
+    if (t - t0 < 2800) requestAnimationFrame(f); else c.remove(); })(t0);
+}
+function openWheel() { go(TAB === 'games' ? 'games' : 'home', 'wheel'); }
+VIEWS.wheel = async function () {
+  const d = await api('wheel'); window._wd = d;
+  const mx = Math.max(...d.odds.map(o => o.p));
+  return `<div class="wh-top"><button class="back" onclick="back()">‹ بازگشت</button><span class="bal num" id="wbal">💎 ${esc(d.balance_text)}</span></div>
+    <div class="hero wh-hero"><small>🎡 گردونه شانس روزانه</small><div class="ttl">روزی یک‌بار رایگان بچرخون و تا ۲۰۰ 💎 ببر!</div></div>
+    <div class="wbox" id="wbox"><canvas id="wc"></canvas></div>
+    <div class="wst" id="wst"></div>
+    <button class="btn" id="wbtn" onclick="wheelSpin()">🎡 بچرخون!</button>
+    <div class="sec-t">🎯 جوایز و شانس هر کدوم</div>
+    <div class="card">${d.odds.map(o => `<div class="orow"><span class="v num">💎 ${fa(o.v)}</span><div class="obar"><i style="width:${Math.max(4, o.p / mx * 100)}%"></i></div><span class="p num">${fa(o.p)}٪</span></div>`).join('')}
+      <div class="dsc" style="margin-top:8px">📊 میانگین جایزه ≈ ${fa(d.avg)} الماس • هر روز ساعت ۰۰:۰۰ (تهران) یک چرخش جدید باز میشه • قرعه روی سرور انجام میشه</div></div>`;
+};
+VIEWS.after_wheel = () => wheelInit();
+
 // ---------- actions
 async function tog(cmd) {
   try { const r = await api('toggle', {cmd}); tick(); if (r.note) toast(r.note); render(); } catch (e) {}
@@ -409,5 +619,51 @@ async function gdel(code) { try { await api('admin_code', {code, delete: true});
 
 load().catch(() => { $('#app').innerHTML = '<div class="load">این صفحه فقط از داخل ربات تلگرام کار می‌کنه.<br>ربات رو باز کن و دکمه‌ی «پنل» رو بزن.</div>'; });
 </script>
+<script>(()=>{const de=document.documentElement,c=document.getElementById('sp'),x=c.getContext('2d'),R=matchMedia('(prefers-reduced-motion:reduce)').matches,TC=matchMedia('(pointer:coarse)').matches,
+rnd=(a,b)=>a+Math.random()*(b-a),
+PAL={d:{c:['#ffffff','#ffffff','#e4e4e4','#d6e0ff'],gl:'255,255,255',hot:'255,255,255',ha:.35,sh:'255,255,255',am:1,sc:1,fl:.1,bk:1},l:{c:['#5b4bc4','#3b2a8f','#7c6ad6','#ffffff'],gl:'124,106,214',hot:'255,255,255',ha:.7,sh:'91,75,196',am:1,sc:2,fl:.5,bk:1.4}},
+DPR=TC?[1.5,1.5,1,1]:[2,2,1.5,1],CNT=[1,.8,.6,.4],GAP=[0,0,26,26],G=document.createElement('canvas');G.width=G.height=64;
+let Q=+de.dataset.pq||0,W=1,H=1,d=1,S=[],M=[],mx=0,my=0,tx=0,ty=0,t0=performance.now(),P=t0,L=t0,nx=t0+1500,hist=[],m4=[],fmin=1e9,rw=innerWidth,rh=innerHeight,skipT=3.5,PL=PAL.d,D=[],cap=0,busy=0;
+function pal(){PL=de.dataset.theme==='light'?PAL.l:PAL.d;const g=G.getContext('2d'),r=g.createRadialGradient(32,32,0,32,32,32);g.clearRect(0,0,64,64);
+r.addColorStop(0,'rgba('+PL.hot+',1)');r.addColorStop(.25,'rgba('+PL.gl+','+PL.ha+')');r.addColorStop(1,'rgba('+PL.gl+',0)');g.fillStyle=r;g.fillRect(0,0,64,64);
+D=PL.c.map(cl=>{const o=document.createElement('canvas');o.width=o.height=32;const q=o.getContext('2d');q.fillStyle=cl;q.beginPath();q.arc(16,16,14,0,6.283);q.fill();return o});
+hist.length=0;m4.length=0;skipT=(performance.now()-t0)/1000+2}
+const mk=()=>{const b=Math.random()<.07;return{x:rnd(0,W),y:rnd(0,H),z:b?rnd(.7,1):rnd(.2,.9),p:rnd(0,6.28),k:Math.random()*4|0,b}};
+function size(){const ow=W,oh=H;d=Math.min(devicePixelRatio||1,DPR[Q]);W=c.width=Math.round(innerWidth*d);H=c.height=Math.round(innerHeight*d);
+for(const s of S){s.x*=W/ow;s.y*=H/oh}
+const n=Math.round(Math.min(innerWidth*innerHeight/3000,innerWidth<700?260:460)*CNT[Q]);while(S.length>n)S.pop();while(S.length<n)S.push(mk())}
+const setQ=n=>{Q=Math.min(n,3);de.dataset.pq=Q;size()},
+spawn=()=>M.push({x:rnd(.3,1)*W,y:rnd(0,.4)*H,vx:-rnd(800,1200)*d,vy:rnd(300,520)*d,l:1});
+function mon(ms,t){if(R||t<skipT||ms>200)return;hist.push(ms);m4.push(ms);if(m4.length>4)m4.shift();
+if(m4.length==4)fmin=Math.min(fmin,(m4[0]+m4[1]+m4[2]+m4[3])/4);
+if(hist.length<90)return;let A=0;for(const v of hist)A+=v;A/=90;hist.length=0;
+if(!cap&&(A>19||(A>fmin*1.3&&A>10)))cap=30;else if(cap&&A>45&&Q<1)setQ(1)}
+function draw(now){if(!R)requestAnimationFrame(draw);
+const t=(now-t0)/1000;mon(now-P,t);P=now;
+if(!R&&(now-L<GAP[Q]||now-L<cap||(t>3.4&&now<busy)))return;
+const dt=Math.min((now-L)/1000,.05);L=now;
+const e=R?1:Math.min(t/3.2,1),wp=Math.pow(1-e,3)*900,cx=W/2,cy=H/2,k=1-Math.exp(-dt*3.5);
+mx+=(tx-mx)*k;my+=(ty-my)*k;x.clearRect(0,0,W,H);
+for(const s of S){let vx=-14*s.z*d,vy=6*s.z*d;
+if(wp>.5){const dx=s.x-cx,dy=s.y-cy,q=Math.hypot(dx,dy)||1,w=wp*s.z*d;vx+=dx/q*w;vy+=dy/q*w}
+s.x+=vx*dt;s.y+=vy*dt;
+if(s.x<-20||s.x>W+20||s.y<-20||s.y>H+20){if(wp>20){s.x=cx+rnd(-.08,.08)*W;s.y=cy+rnd(-.08,.08)*H}else{if(s.x<-20)s.x=W+20;else if(s.x>W+20)s.x=-20;if(s.y<-20)s.y=H+20;else if(s.y>H+20)s.y=-20}}
+const px=s.x+mx*s.z*46*d,py=s.y+my*s.z*46*d,a=(.45+.55*Math.sin(t*(1+s.z*2)+s.p))*(.4+s.z*.6);
+x.globalAlpha=(a>PL.fl?a:PL.fl)*PL.am;
+if(wp>60){x.strokeStyle=PL.c[s.k];x.lineWidth=s.z*1.6*d*PL.sc;x.beginPath();x.moveTo(px,py);x.lineTo(px-vx*.07,py-vy*.07);x.stroke()}
+else if(s.b){const r=(9+s.z*9)*d*PL.bk;x.drawImage(G,px-r,py-r,r*2,r*2)}
+else{const r=s.z*1.6*d*PL.sc;x.drawImage(D[s.k],px-r,py-r,r*2,r*2)}}
+x.globalAlpha=1;
+if(!R&&now>nx&&t>3){spawn();nx=now+rnd(2500,6000)}
+if(M.length){M=M.filter(m=>m.l>0);for(const m of M){m.x+=m.vx*dt;m.y+=m.vy*dt;m.l-=dt*1.1;
+const g=x.createLinearGradient(m.x,m.y,m.x-m.vx*.14,m.y-m.vy*.14);g.addColorStop(0,'rgba('+PL.sh+','+m.l+')');g.addColorStop(1,'rgba('+PL.sh+',0)');
+x.strokeStyle=g;x.lineWidth=1.8*d*PL.sc;x.beginPath();x.moveTo(m.x,m.y);x.lineTo(m.x-m.vx*.14,m.y-m.vy*.14);x.stroke()}}}
+pal();size();new MutationObserver(pal).observe(de,{attributes:true,attributeFilter:['data-theme']});
+addEventListener('resize',()=>{if(innerWidth!==rw||Math.abs(innerHeight-rh)>200){rw=innerWidth;rh=innerHeight;size()}});
+addEventListener('scroll',()=>{busy=performance.now()+160},{passive:true});
+if(!TC)addEventListener('pointermove',e=>{tx=e.clientX/innerWidth-.5;ty=e.clientY/innerHeight-.5},{passive:true});
+if(!R)addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')spawn()});
+document.addEventListener('visibilitychange',()=>{P=L=performance.now();hist.length=0;m4.length=0});
+requestAnimationFrame(draw)})()</script>
 </body>
 </html>
