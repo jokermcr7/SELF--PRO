@@ -189,34 +189,3 @@ def balance_card(diamonds: int, fmt_amount: str, value: str, who_html: str = "")
     """The 'your balance' message: red diamonds button + green toman/dollar value button."""
     text = f"💎 <b>موجودی {who_html}</b>".replace("  ", " ") if who_html else "💎 <b>موجودی شما</b>"
     return text, kb([[btn(f"{fmt_amount} الماس 💎", "gi:b", RED)], [btn(f"💰 {value}", "gi:v", GREEN)]])
-
-
-# ------------------------------------------------------------------ media from memory (wheel animation / result card)
-async def _send_bytes(method, field, chat_id, data: bytes, caption: str, markup, filename, ctype, extra=None):
-    form = aiohttp.FormData()
-    form.add_field("chat_id", str(chat_id))
-    form.add_field("caption", caption)
-    form.add_field("parse_mode", "HTML")
-    if markup:
-        form.add_field("reply_markup", json.dumps(markup))
-    for k, v in (extra or {}).items():
-        form.add_field(k, str(v))
-    form.add_field(field, data, filename=filename, content_type=ctype)
-    return await call(method, form=form)
-
-
-async def send_animation(chat_id, data: bytes, caption: str, markup: dict | None = None, width=None, height=None):
-    """GIF bytes -> animation message (Telegram plays it as a looping video)."""
-    extra = {k: v for k, v in (("width", width), ("height", height)) if v}
-    return await _send_bytes("sendAnimation", "animation", chat_id, data, caption, markup, "wheel.gif", "image/gif", extra)
-
-
-async def send_photo_bytes(chat_id, data: bytes, caption: str, markup: dict | None = None):
-    return await _send_bytes("sendPhoto", "photo", chat_id, data, caption, markup, "result.png", "image/png")
-
-
-async def delete_message(chat_id, message_id: int):
-    try:
-        await call("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
-    except BotApiError:
-        pass

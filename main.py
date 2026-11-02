@@ -107,17 +107,17 @@ async def bal_text(uid):
 
 
 async def menu_markup(uid):
+    wurl = webapp.public_url()
     rows = [[B("مدیریت سلف", "m:mg", R)],
             [B(f"⟦ {await db.time_left_short(uid)} | {await bal_text(uid)} الماس ⟧", "m:status", R)],
             [B("خرید الماس", "m:buy", G), B("حساب کاربری", "m:acc", G)],
-            [B("کد هدیه", "m:code", R), B("🎡 گردونه شانس", "w:o", G)],
+            [B("کد هدیه", "m:code", R)] + ([botapi.webapp_btn("🎡 گردونه شانس", wurl + "?go=wheel", G)] if wurl else []),
             [B("زیر مجموعه", "m:ref", R),
              botapi.url_btn("پشتیبانی", f"https://t.me/{SUPPORT}", R) if SUPPORT else B("پشتیبانی", "m:sup", R)]]
     if uid in ADMINS:                                   # owner-only tools
         rows.insert(3, [B("🎟 ساخت کد هدیه", "a:gift", G), B("👥 تمامی کاربران", "a:users:0", G)])
         rows.insert(4, [B("🔒 عضویت اجباری", "a:fj", G), B("🏷 کد تخفیف", "a:dsc", G)])
         rows.insert(5, [B("💾 بکاپ دیتابیس", "a:bk", G), B("🎁 هدیه الماس به همه", "a:gall", G)])
-    wurl = webapp.public_url()
     if wurl:                                            # Telegram Mini App (full panel with all features)
         rows.insert(0, [botapi.webapp_btn("🚀 پنل مینی‌اپ (مدیریت همه‌ی قابلیت‌ها)", wurl, G)])
     last = []

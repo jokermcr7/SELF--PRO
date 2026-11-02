@@ -621,6 +621,12 @@ async def wheel_last(uid) -> float:
     return await pool.fetchval("SELECT last_daily FROM wallets WHERE user_id=$1", uid) or 0.0
 
 
+async def wheel_today_prize(uid, day_start):
+    """Prize won by the last spin since `day_start` (None if none)."""
+    return await pool.fetchval("SELECT amount FROM tx WHERE user_id=$1 AND reason='wheel' AND ts >= to_timestamp($2) "
+                               "ORDER BY id DESC LIMIT 1", uid, day_start)
+
+
 async def gift_all_count() -> int:
     return await pool.fetchval("SELECT count(*) FROM wallets WHERE user_id<>ALL($1::bigint[])", list(ADMINS)) or 0
 

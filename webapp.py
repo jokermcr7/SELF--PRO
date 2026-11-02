@@ -30,6 +30,7 @@ import db
 import gameapi
 import selfbot
 import utils
+import wheel
 
 log = logging.getLogger("webapp")
 HERE = Path(__file__).parent
@@ -114,6 +115,7 @@ async def a_state(uid, b, user):
         "ref_link": ref, "ref_bonus": db.REF_BONUS, "support": H.get("support", ""), "channel": H.get("channel", ""),
         "version": H.get("version", ""), "rate": round(db.RATE_PER_HOUR, 2), "pack": db.DIAMONDS_PER_30_DAYS,
         "pack_toman": db.price_toman(db.DIAMONDS_PER_30_DAYS),
+        "wheel_ready": admin or await db.wheel_last(uid) < wheel.day_start(),
     }
 
 
@@ -412,7 +414,47 @@ async def a_game_play(uid, b, user):
         raise Err(e.msg)
 
 
+# ---- daily lucky wheel
+_wheel_locks: dict[int, asyncio.Lock] = {}
+
+
+async def a_wheel(uid, b, user):
+    admin = uid in db.ADMINS
+    ready = admin or await db.wheel_last(uid) < wheel.day_start()
+    today = None if ready else await db.wheel_today_prize(uid, wheel.day_start())
+    return {"ready": ready, "left_s": wheel.seconds_left(), "left_text": wheel.left_text(), "order": wheel.ORDER,
+            "odds": [{"v": v, "p": round(p, 1)} for v, p in wheel.odds()], "avg": round(wheel.average_prize()),
+            "today": int(today) if today else None, "admin": admin, "balance_text": await _bal_text(uid)}
+
+
+async def a_wheel_spin(uid, b, user):
+    """The SERVER decides (and pays) - the browser only animates to the returned slice."""
+    admin = uid in db.ADMINS
+    name = " ".join(x for x in (user.get("first_name"), user.get("last_name")) if x) or str(uid)
+    lock = _wheel_locks.setdefault(uid, asyncio.Lock())
+    if lock.locked():
+        raise Err("⏳ چرخش قبلی هنوز تموم نشده")
+    async with lock:
+        await db.ensure_wallet(uid, utils.clean_name(name))
+        prev = 0.0
+        if not admin:                                           # owners can spin without limit (testing)
+            prev = await db.wheel_claim(uid, wheel.day_start(), time.time())
+            if prev is None:
+                raise Err(f"امروز چرخوندی؛ گردونه‌ی بعدی {wheel.left_text()} دیگه باز میشه")
+        idx, prize = wheel.draw_prize()
+        try:
+            bal = await db.add(uid, prize, "wheel")
+        except Exception:                                       # noqa: BLE001  (give the spin back)
+            log.exception("wheel payout failed")
+            if not admin:
+                await db.wheel_release(uid, prev)
+            raise Err("خطا؛ چرخش حساب نشد. دوباره امتحان کن.")
+        return {"idx": idx, "prize": prize, "balance": 0 if admin else int(bal), "balance_text": await _bal_text(uid),
+                "left_s": wheel.seconds_left(), "left_text": wheel.left_text(), "admin": admin}
+
+
 ROUTES = {
+    "wheel": a_wheel, "wheel_spin": a_wheel_spin,
     "state": a_state, "features": a_features, "toggle": a_toggle, "action": a_action, "selfpower": a_selfpower,
     "clock": a_clock, "clock_set": a_clock_set, "cpic": a_cpic, "cpic_set": a_cpic_set, "cpic_preview": a_cpic_preview,
     "style": a_style, "style_set": a_style_set, "afk": a_afk, "afk_set": a_afk_set, "kw": a_kw, "kw_set": a_kw_set,
