@@ -1,11 +1,10 @@
 """Clock-on-profile-photo renderer (Pillow).
 
-render(raw_base_photo_bytes | None, style, color, now) -> JPEG bytes (1280x1280)
+render(raw_base_photo_bytes | None, style, color, now) -> JPEG bytes (800x800)
 
-32 designs x 9 colors: 3 poster-artwork designs (always on assets/poster_art.jpg) + 29 older designs. The base photo is the user's own profile picture (or a gradient if there is none);
+29 designs x 9 colors. The base photo is the user's own profile picture (or a gradient if there is none);
 every design is drawn ON TOP of it, so the photo stays visible.
 """
-import colorsys
 import functools
 import io
 import math
@@ -19,14 +18,6 @@ S = 800
 OUT = 1280           # uploaded size (profile photos are stored/zoomed up to this)
 _FD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fonts")
 _SYS = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "DejaVuSans-Bold.ttf", "Arial.ttf"]
-
-# ---- the 3 artwork designs (v2.3.1): they always draw on the bundled poster, not on the user's photo
-_HERE = os.path.dirname(os.path.abspath(__file__))
-ART_FILE = os.path.join(_HERE, "assets", "poster_art.jpg")
-ART_SIZE = 640
-ART_C = (320, 303)       # centre of the brush circle inside the 640x640 artwork
-ART_R = 256              # radius of that circle
-PAPER = (232, 223, 209)  # paper colour of the artwork
 
 # key -> (Persian name, dot emoji for buttons, RGB)
 COLORS = {
@@ -1556,133 +1547,11 @@ STYLES += [("poster1", "🖼 پوستر ۱ روشن"), ("poster2", "🖼 پوس�
 _DRAW.update({"poster1": _poster1, "poster2": _poster2, "poster3": _poster3, "poster4": _poster4, "poster5": _poster5})
 
 
-# ------------------------------------------------------------------ the artwork
-@functools.lru_cache(maxsize=1)
-def _art():
-    try:
-        return Image.open(ART_FILE).convert("RGB")
-    except OSError:                                         # file missing: a plain stand-in so the clock still works
-        im = Image.new("RGB", (ART_SIZE, ART_SIZE), PAPER)
-        d = ImageDraw.Draw(im)
-        d.ellipse((ART_C[0] - ART_R, ART_C[1] - ART_R, ART_C[0] + ART_R, ART_C[1] + ART_R), outline=(176, 20, 32), width=36)
-        return im
-
-
-@functools.lru_cache(maxsize=16)
-def _art_for(col):
-    """The artwork with its strongly saturated (red) brush parts re-coloured to the accent; red itself = untouched."""
-    art = _art()
-    if col == COLORS["red"][2]:
-        return art
-    h, s, _v = colorsys.rgb_to_hsv(*(x / 255 for x in col))
-    hh, sat, val = art.convert("HSV").split()
-    m = sat.point(lambda p: 0 if p < 70 else min(255, (p - 70) * 5))
-    k = min(1.0, s / 0.85)
-    hh = Image.composite(Image.new("L", art.size, int(h * 255) % 256), hh, m)
-    sat = Image.composite(sat.point(lambda p: int(p * k)), sat, m)
-    val = Image.composite(val.point(lambda p: min(255, int(p * 1.14))), val, m)
-    return Image.merge("HSV", (hh, sat, val)).convert("RGB")
-
-
-def _ink(c):
-    """The accent color made dark enough to read on paper (light accents like white / gold get darker)."""
-    lum = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
-    return shade(c, 0.2 + 0.4 * min(1.0, max(0.0, (lum - 120) / 110)))
-
-
-def _paper_canvas():
-    return Image.new("RGBA", (S, S), PAPER + (255,))
-
-
-def _place_art(canvas, col, cx, cy, ring_diameter, feather=26):
-    """Paste the artwork so that its brush circle has the given diameter, centred on (cx, cy); the edges melt into the paper."""
-    k = ring_diameter / (2 * ART_R)
-    size = max(16, round(ART_SIZE * k))
-    art = _art_for(col).resize((size, size), Image.LANCZOS).convert("RGBA")
-    m = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(m).rectangle((feather, feather, size - feather, size - feather), fill=255)
-    canvas.paste(art, (round(cx - ART_C[0] * k), round(cy - ART_C[1] * k)), m.filter(ImageFilter.GaussianBlur(feather / 3.2)))
-    return canvas
-
-
-# ------------------------------------------------------------------ design 1: light poster
-def _pa_light(c, hm, date, now):
-    """پوستر روشن: the artwork on paper, big brush digits below (hours in the accent color, minutes black) + Jalali date."""
-    img = _place_art(_paper_canvas(), c, S / 2, S * 0.372, S * 0.57)
-    hmk, cmk, mmk, _w = _poster_digits(11, hm, 134, S / 2, S * 0.797, 0.34)
-    img = _drop(img, ImageChops.lighter(ImageChops.lighter(hmk, cmk), mmk), (5, 8), 8, 0.28)
-    img = _paint(img, hmk, _ink(c))
-    img = _paint(img, cmk, (66, 64, 66))
-    img = _paint(img, mmk, (22, 22, 26))
-    return _track(img, _dtxt(date), (S / 2, S * 0.935), _font("Poppins-Medium.ttf", 24), (86, 82, 78, 255), 3.4)
-
-
-# ------------------------------------------------------------------ design 2: dark poster
-def _pa_dark(c, hm, date, now):
-    """پوستر تاریک: the artwork inside a circle with a glowing accent ring on a dark stage; white hours, glowing minutes."""
-    stage = _vgrad2((17, 17, 21), (5, 5, 8))
-    cx, cy, R = S / 2, S * 0.40, S * 0.285
-    disc = _place_art(_paper_canvas(), c, cx, cy, 2 * R * 0.93)
-    d2, x0, y0 = int(R * 2), int(cx - R), int(cy - R)
-    cm = Image.new("L", (d2 * 4, d2 * 4), 0)
-    ImageDraw.Draw(cm).ellipse((0, 0, d2 * 4 - 1, d2 * 4 - 1), fill=255)
-    stage.paste(disc.crop((x0, y0, x0 + d2, y0 + d2)), (x0, y0), cm.resize((d2, d2), Image.LANCZOS))
-    ss = _SS()
-    ss.d.ellipse(ss.xy(cx - R - 7, cy - R - 7, cx + R + 7, cy + R + 7), outline=shade(c, 0.12) + (255,), width=9 * 2)
-    ss.d.ellipse(ss.xy(cx - R - 30, cy - R - 30, cx + R + 30, cy + R + 30), outline=(205, 205, 212, 125), width=2 * 2)
-    rings = ss.done()
-    img = _glow_from_mask(stage, rings.split()[3].point(lambda p: 255 if p > 200 else 0), c, 9, 0.55, 1)
-    img = _over(img, rings)
-    hmk, cmk, mmk, _w = _poster_digits(21, hm, 112, S / 2, S * 0.842, 0.34, 0.14, 0.9)
-    img = _paint(img, hmk, (246, 242, 236))
-    img = _paint(img, cmk, (226, 222, 216))
-    img = _glow_from_mask(img, mmk, c, 11, 1.1, 1)
-    img = _paint(img, mmk, tint(c, 0.10))
-    return _track(img, _dtxt(date), (S / 2, S * 0.935), _font("Poppins-Medium.ttf", 22), (176, 172, 170, 255), 3.4)
-
-
-# ------------------------------------------------------------------ design 3: analog clock on the artwork
-def _pa_analog(c, hm, date, now):
-    """ساعت آنالوگ: minute ticks all around (hour ticks in the accent color) and a real analog clock over the artwork."""
-    img = _place_art(_paper_canvas(), c, S / 2, S / 2, S * 0.70)
-    cx = cy = S / 2
-    R = S * 0.488
-    ink = (28, 28, 32)
-    ss = _SS()
-    for i in range(60):
-        major = i % 5 == 0
-        a, b = _polar(cx, cy, R, i * 6), _polar(cx, cy, R - (34 if major else 17), i * 6)
-        ss.d.line(ss.xy(*a, *b), fill=(_ink(c) + (255,)) if major else (ink + (175,)), width=(7 if major else 3) * 2)
-    img = _over(img, ss.done())
-    ha, ma = (now.hour % 12 + now.minute / 60) * 30, now.minute * 6
-    hands = _SS()
-    for ang, ln, wb, wt, tl, col in ((ha, S * 0.235, 21, 10, 30, shade(c, 0.05) + (255,)),
-                                     (ma, S * 0.37, 13, 4, 46, (250, 248, 244, 255))):
-        pts = [(x * 2, y * 2) for x, y in _hand_poly(cx, cy, ang, ln, wb, wt, tl)]
-        hands.d.polygon(pts, fill=col)
-        hands.d.line(pts + [pts[0]], fill=(20, 20, 24, 255), width=3, joint="curve")          # thin outline: visible on paper too
-    hands.d.ellipse(hands.xy(cx - 15, cy - 15, cx + 15, cy + 15), fill=(250, 248, 244, 255), outline=(20, 20, 24, 255), width=3)
-    hands.d.ellipse(hands.xy(cx - 8, cy - 8, cx + 8, cy + 8), fill=shade(c, 0.1) + (255,))
-    hl = hands.done()
-    sh = Image.new("RGBA", (S, S), (0, 0, 0, 255))
-    sh.putalpha(ImageChops.offset(hl.split()[3], 4, 7).filter(ImageFilter.GaussianBlur(6)).point(lambda p: int(p * 0.45)))
-    return _over(_over(img, sh), hl)
-
-
-
-_DRAW_ART = {"light": _pa_light, "dark": _pa_dark, "analog": _pa_analog}
-ART_KEYS = ("light", "dark", "analog")
-ART_STYLES = [("light", "🖼 پوستر روشن"), ("dark", "🌌 پوستر تاریک"), ("analog", "🕰 ساعت آنالوگ")]
-# all designs: the 3 artwork ones first (same numbers as in v2.3.1), then every older design
-STYLES = ART_STYLES + [(("analog_classic", "آنالوگ کلاسیک") if k == "analog" else (k, n)) for k, n in STYLES]
-_DRAW["analog_classic"] = _DRAW.pop("analog")
-
-
 def style_key(v):
     keys = [k for k, _ in STYLES]
     if isinstance(v, int) or str(v).lstrip("-").isdigit():
         return keys[int(v) % len(keys)]
-    return v if (v in _DRAW or v in _DRAW_ART) else keys[0]
+    return v if v in _DRAW else keys[0]
 
 
 def color_key(v):
@@ -1701,12 +1570,8 @@ def render(raw, style, color, now=None) -> bytes:
     now = now or datetime.now()
     ck = color_key(color)
     col = COLORS[ck][2]
-    sk = style_key(style)
-    if sk in _DRAW_ART:                                     # artwork designs: base is always the bundled poster
-        img = _DRAW_ART[sk](col, now.strftime("%H:%M"), _date_text(now), now)
-    else:
-        img = make_base(raw, col)
-        img = _DRAW[sk](img, col, now.strftime("%H:%M"), _date_text(now), now)
+    img = make_base(raw, col)
+    img = _DRAW[style_key(style)](img, col, now.strftime("%H:%M"), _date_text(now), now)
     img = img.convert("RGB")
     if OUT != S:                                            # high-res output: zooming in stays smooth
         img = img.resize((OUT, OUT), Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=1.2, percent=45, threshold=3))
