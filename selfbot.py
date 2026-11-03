@@ -992,6 +992,17 @@ async def c_clockpic(c, e, uid, arg):
             return await e.edit("فاصله‌ی آپدیت: `.ساعت_عکس فاصله 1` (۱ / ۲ / ۵ / ۱۰ دقیقه)")
         await db.uset(uid, "cpic_every", n)
         return await e.edit(f"⏱ عکس ساعت هر {n} دقیقه آپدیت میشه")
+    if sub in ("همه", "all", "پوسترها"):
+        await cpic_get_base(c, uid, capture=not cfg["on"])
+        files, names = [], []
+        for k, n in clockpic.STYLES:
+            if k.startswith("poster") or k in clockpic.ART_KEYS:
+                b = io.BytesIO(await cpic_render(c, uid, style=k))
+                b.name = f"{k}.jpg"
+                files.append(b)
+                names.append(n)
+        await c.send_file("me", files, caption=names)
+        return await e.edit(f"🖼 پیش‌نمایش {len(files)} طرح پوستر توی Saved Messages فرستاده شد")
     if sub in ("پیشنمایش", "نمونه", "preview"):
         await cpic_get_base(c, uid, capture=not cfg["on"])
         bio = io.BytesIO(await cpic_render(c, uid))
