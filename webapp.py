@@ -248,7 +248,7 @@ async def a_cpic_preview(uid, b, user):
     style = b.get("style") if b.get("style") in dict(clockpic.STYLES) else None
     color = b.get("color") if b.get("color") in clockpic.COLORS else None
     cfg = await selfbot.cpic_cfg(uid)
-    base = await selfbot.cpic_get_base(c, uid, capture=not cfg["on"])
+    base = None                                   # the base is always the bundled artwork
     # small preview: render the real thing (same code as the live clock), it is downscaled by the browser
     jpg = await asyncio.get_running_loop().run_in_executor(
         selfbot._POOL, clockpic.render, base, style or cfg["style"], color or cfg["color"], selfbot.datetime.now(selfbot.TZ))
